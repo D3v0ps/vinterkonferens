@@ -1,0 +1,629 @@
+<!--
+  ================================================================
+   STOLKAMPANJEN – 400 stolar till Stockholms moské
+  ================================================================
+   Klistra in HELA den här filen i WordPress:
+     • Avada: lägg till elementet "Code Block" och klistra in.
+     • Vanliga WordPress-editorn: blocket "Anpassad HTML".
+   Ändra bara under INSTÄLLNINGAR här nedanför.
+   Guide och förklaringar: README.md
+  ================================================================
+-->
+<script>
+window.STOLKAMPANJ = {
+  /* ---------- INSTÄLLNINGAR ---------- */
+
+  // Swish
+  swishNummer: "1231669597",   // Moskéns Swish-nummer (från stockholmsmoske.se/donera). BEKRÄFTA innan lansering!
+  meddelande: "stol",          // Står i meddelandefältet i Swish – så att kassören ser att gåvan är till stolarna
+  prisPerStol: 500,            // kr per stol
+  malStolar: 400,              // mål
+
+  // Live-räknaren
+  // Klistra in länken från Google Kalkylark: Arkiv → Dela → Publicera på webben → CSV.
+  // Tomt ("") = räknaren visar beloppet i insamlatKr nedan i stället (ändras för hand).
+  dataUrl: "",
+  insamlatKr: 0,               // Används bara om dataUrl är tom eller inte går att nå
+  uppdateraVarjeMinut: 2,      // Hur ofta sidan hämtar nya siffror
+
+  // Delning
+  sidansUrl: ""                // T.ex. "https://stockholmsmoske.se/stolar/". Tomt = sidans egen adress
+};
+</script>
+<div class="stolk" id="stolkampanj" data-state="laddar">
+  <section class="stolk-hero" aria-labelledby="stolk-rubrik">
+    <p class="stolk-eyebrow">Stockholms moské · Insamling</p>
+    <h2 class="stolk-h1" id="stolk-rubrik">Ge en stol till moskén</h2>
+    <p class="stolk-lede">Många i vår församling – äldre och den som har ont i knän eller rygg – kan inte sitta på golvet. Nu köper vi in <span data-stolk="mal">400</span> stolar så att alla får en plats i bönen, på fredagspredikan och på föreläsningarna. En stol kostar <span data-stolk="pris">500 kr</span>.</p>
+    <div class="stolk-progress">
+      <div class="stolk-count">
+        <span class="stolk-big" data-stolk="stolar">0</span>
+        <span class="stolk-of">av <span data-stolk="mal">400</span> stolar</span>
+      </div>
+      <div class="stolk-bar" role="progressbar" aria-label="Insamlade stolar" aria-valuemin="0" aria-valuemax="400" aria-valuenow="0"><span class="stolk-bar-fill"></span></div>
+      <div class="stolk-stats">
+        <span class="stolk-stat"><strong data-stolk="kr">0 kr</strong> av <span data-stolk="malkr">200 000 kr</span></span>
+        <span class="stolk-chip" data-stolk="idag" hidden></span>
+        <span class="stolk-live"><i aria-hidden="true"></i><span data-stolk="uppdaterad">Uppdateras löpande</span></span>
+      </div>
+      <p class="stolk-klart" data-stolk="klart" hidden>Alhamdulillah – målet är nått! Tack till varenda givare.</p>
+      <p class="stolk-toast" data-stolk="toast" role="status" aria-live="polite" hidden></p>
+    </div>
+    <a class="stolk-hero-cta" href="#stolk-ge"><span>Ge en stol – <span data-stolk="pris">500 kr</span></span></a>
+  </section>
+  <div class="stolk-main">
+    <section class="stolk-card stolk-ge" id="stolk-ge" aria-labelledby="stolk-ge-rubrik">
+      <h3 class="stolk-h3" id="stolk-ge-rubrik">Hur många stolar vill du ge?</h3>
+      <div class="stolk-stepper">
+        <button type="button" class="stolk-step" data-stolk-steg="-1" aria-label="En stol färre">−</button>
+        <label class="stolk-antal"><input id="stolk-antal" type="number" inputmode="numeric" min="1" max="999" value="1" aria-label="Antal stolar"><span data-stolk="stolord">stol</span></label>
+        <button type="button" class="stolk-step" data-stolk-steg="1" aria-label="En stol till">+</button>
+      </div>
+      <div class="stolk-snabb" role="group" aria-label="Snabbval">
+        <button type="button" data-stolk-antal="1" aria-pressed="true">1</button>
+        <button type="button" data-stolk-antal="2" aria-pressed="false">2</button>
+        <button type="button" data-stolk-antal="5" aria-pressed="false">5</button>
+        <button type="button" data-stolk-antal="10" aria-pressed="false">10</button>
+      </div>
+      <p class="stolk-summa"><span data-stolk="antaltext">1 stol</span> × <span data-stolk="pris">500 kr</span> = <strong data-stolk="belopp">500 kr</strong></p>
+      <p class="stolk-inapp">Öppnade du sidan från Instagram eller Facebook? Om Swish inte öppnas: tryck på <b>···</b> och välj <b>Öppna i webbläsare</b> – eller swisha manuellt här nedanför.</p>
+      <a class="stolk-swishknapp" data-stolk="applank" href="#"><span>Öppna Swish och ge <span data-stolk="belopp">500 kr</span></span></a>
+      <details class="stolk-qrdetails" open>
+        <summary>Visa QR-kod (betala från en annan mobil)</summary>
+        <div class="stolk-qrbox">
+          <div class="stolk-qr" data-stolk="qr" aria-live="off"></div>
+          <p class="stolk-qrtext"><b>Skanna med Swish-appen</b><span>Belopp och meddelande fylls i automatiskt</span></p>
+        </div>
+      </details>
+      <div class="stolk-hjalp" data-stolk="hjalp" hidden>
+        <b>Öppnades inte Swish?</b> Swisha manuellt med uppgifterna nedan – det går lika bra.
+      </div>
+      <div class="stolk-manuellt">
+        <p class="stolk-liten">Eller swisha manuellt</p>
+        <dl>
+          <div><dt>Nummer</dt><dd><span data-stolk="nummer">123 166 95 97</span><button type="button" data-stolk-kopiera="nummer">Kopiera</button></dd></div>
+          <div><dt>Belopp</dt><dd><span data-stolk="belopp">500 kr</span><button type="button" data-stolk-kopiera="belopp">Kopiera</button></dd></div>
+          <div><dt>Meddelande</dt><dd><span data-stolk="meddelande">stol</span><button type="button" data-stolk-kopiera="meddelande">Kopiera</button></dd></div>
+        </dl>
+      </div>
+      <div class="stolk-tack" data-stolk="tack" role="status" hidden>
+        <p class="stolk-tack-rubrik">Jazāk Allāhu khayran – tack för din gåva!</p>
+        <p>Gick betalningen igenom ser du en bekräftelse i Swish. Din stol syns i räknaren så snart moskén har registrerat gåvan, oftast samma dag.</p>
+        <a class="stolk-knapp-wa" data-stolk="wa" href="#" target="_blank" rel="noopener">Tipsa familjen på WhatsApp</a>
+      </div>
+    </section>
+    <section class="stolk-card stolk-salen" aria-labelledby="stolk-salen-rubrik">
+      <h3 class="stolk-h3" id="stolk-salen-rubrik">Varje ruta är en stol</h3>
+      <p class="stolk-legend"><span><i class="is-given"></i>Given</span><span><i class="is-idag"></i>Ny idag</span><span><i></i>Väntar på en givare</span></p>
+      <div class="stolk-grid" data-stolk="grid" aria-hidden="true"></div>
+      <h4 class="stolk-h4">Senaste dagarna</h4>
+      <ul class="stolk-dagar" data-stolk="dagar"><li class="stolk-tom">Bli den första att ge en stol!</li></ul>
+    </section>
+  </div>
+  <section class="stolk-varfor" aria-labelledby="stolk-varfor-rubrik">
+    <div>
+      <h3 class="stolk-h3" id="stolk-varfor-rubrik">Varför stolar?</h3>
+      <ul class="stolk-punkter">
+        <li><b>För den som inte kan sitta på golvet.</b> Äldre, den som har ont i knän eller rygg, gravida och den som är skadad.</li>
+        <li><b>Så att alla kan vara med.</b> I bönen, på fredagspredikan, föreläsningar och samlingar i moskén.</li>
+        <li><b>En gåva som fortsätter att ge.</b> Varje gång någon sitter på stolen – i år efter år.</li>
+      </ul>
+    </div>
+    <blockquote class="stolk-hadith">
+      <p>”När människan dör upphör hennes gärningar, utom tre: en fortlöpande välgörenhet (sadaqa jāriya), kunskap som andra har nytta av, eller ett rättfärdigt barn som ber för henne.”</p>
+      <cite>Profeten Muhammad ﷺ · återgiven av Muslim</cite>
+    </blockquote>
+  </section>
+  <section class="stolk-dela" aria-labelledby="stolk-dela-rubrik">
+    <h3 class="stolk-h3" id="stolk-dela-rubrik">Dela insamlingen</h3>
+    <p>Skicka till familjen, i WhatsApp-gruppen eller på Facebook. En delning kan bli en stol.</p>
+    <div class="stolk-delaknappar">
+      <a data-stolk="wa" href="#" target="_blank" rel="noopener">WhatsApp</a>
+      <a data-stolk="fb" href="#" target="_blank" rel="noopener">Facebook</a>
+      <button type="button" data-stolk="dela" hidden>Dela …</button>
+      <button type="button" data-stolk-kopiera="lank">Kopiera länk</button>
+    </div>
+  </section>
+  <section class="stolk-faq" aria-labelledby="stolk-faq-rubrik">
+    <h3 class="stolk-h3" id="stolk-faq-rubrik">Vanliga frågor</h3>
+    <details><summary>Hur vet jag att min gåva har kommit fram?</summary><p>Du får en bekräftelse i Swish-appen direkt. Räknaren här uppdateras när moskén har registrerat gåvan, oftast samma dag.</p></details>
+    <details><summary>Kan jag ge ett annat belopp?</summary><p>Ja. Swisha valfritt belopp till <span data-stolk="nummer">123 166 95 97</span> och skriv <b data-stolk="meddelande">stol</b> som meddelande. Varje <span data-stolk="pris">500 kr</span> blir en stol i räknaren.</p></details>
+    <details><summary>Varför ska jag skriva ”<span data-stolk="meddelande">stol</span>” i meddelandet?</summary><p>Så att moskén ser att gåvan är till stolarna. Använder du knappen eller QR-koden fylls det i automatiskt.</p></details>
+    <details><summary>Swish-knappen fungerar inte</summary><p>Har du öppnat länken inifrån Instagram eller Facebook? Tryck på ··· och välj ”Öppna i webbläsare” och försök igen. Du kan också alltid swisha manuellt med nummer, belopp och meddelande ovan.</p></details>
+  </section>
+</div>
+<style>
+#stolkampanj{--navy:#23256f;--navy-2:#2e2f79;--navy-3:#1a1b55;--ink:#1c1d3b;--muted:#585a76;--gold:#c6b258;--gold-ljus:#e9dcaa;--cream:#fbf8f0;--line:#e6e2d4;--green:#2f8a4c;--green-ljus:#65bc7b;--ledig:#e2e0ec;--white:#fff;
+  font-family:"Open Sans",system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;font-size:16px;line-height:1.55;color:var(--ink);text-align:left;container-type:inline-size;max-width:1120px;margin:0 auto}
+#stolkampanj *,#stolkampanj *::before,#stolkampanj *::after{box-sizing:border-box}
+#stolkampanj [hidden]{display:none!important}
+#stolkampanj p,#stolkampanj ul,#stolkampanj dl,#stolkampanj dd,#stolkampanj blockquote{margin:0;padding:0}
+/* !important på rubrikernas storlek: Avadas "responsiva typografi" skriver annars över dem */
+#stolkampanj .stolk-h1,#stolkampanj .stolk-h3,#stolkampanj .stolk-h4{font-family:inherit;color:inherit;text-transform:none;letter-spacing:0;margin:0;padding:0;border:0}
+#stolkampanj .stolk-h1{font-size:clamp(30px,7cqi,52px)!important;font-weight:800;line-height:1.08;color:#fff}
+#stolkampanj .stolk-h3{font-size:22px!important;font-weight:700;line-height:1.25;color:var(--navy);margin-bottom:14px}
+#stolkampanj .stolk-h4{font-size:14px!important;font-weight:700;line-height:1.3;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:22px 0 10px}
+#stolkampanj button,#stolkampanj a{font-family:inherit;-webkit-tap-highlight-color:transparent}
+#stolkampanj button{cursor:pointer;text-transform:none;letter-spacing:0;box-shadow:none;margin:0}
+#stolkampanj a:focus-visible,#stolkampanj button:focus-visible,#stolkampanj input:focus-visible,#stolkampanj summary:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+/* Hero */
+#stolkampanj .stolk-hero{position:relative;background-color:var(--navy);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='56' viewBox='0 0 56 56'%3E%3Cg fill='none' stroke='%23c6b258' stroke-opacity='.2'%3E%3Crect x='18' y='18' width='20' height='20'/%3E%3Crect x='18' y='18' width='20' height='20' transform='rotate(45 28 28)'/%3E%3Cpath d='M0 0l9 9M56 0l-9 9M0 56l9-9M56 56l-9-9'/%3E%3C/g%3E%3C/svg%3E");color:#fff;border-radius:22px;padding:clamp(24px,6cqi,56px) clamp(18px,5cqi,56px);overflow:hidden}
+#stolkampanj .stolk-eyebrow{font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);margin-bottom:12px!important}
+#stolkampanj .stolk-lede{max-width:62ch;font-size:clamp(16px,2.3cqi,19px);color:#e4e5f5;margin-top:14px!important}
+#stolkampanj .stolk-progress{margin-top:28px;background:rgba(10,10,50,.35);border:1px solid rgba(198,178,88,.35);border-radius:18px;padding:20px clamp(16px,3cqi,28px) 18px;backdrop-filter:blur(2px)}
+#stolkampanj .stolk-count{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 12px}
+#stolkampanj .stolk-big{font-size:clamp(56px,13cqi,96px);font-weight:800;line-height:1;color:var(--gold);font-variant-numeric:tabular-nums}
+#stolkampanj .stolk-of{font-size:clamp(18px,3cqi,24px);font-weight:600;color:#fff}
+#stolkampanj .stolk-bar{position:relative;height:14px;border-radius:99px;background:rgba(255,255,255,.14);margin:16px 0 14px;overflow:hidden}
+#stolkampanj .stolk-bar-fill{position:absolute;inset:0 auto 0 0;width:0;border-radius:inherit;background:linear-gradient(90deg,#b9a246,var(--gold) 60%,#e5d48d);transition:width 1.2s cubic-bezier(.2,.8,.2,1)}
+#stolkampanj .stolk-stats{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;font-size:15px;color:#d9daf0}
+#stolkampanj .stolk-stat strong{color:#fff;font-weight:700}
+#stolkampanj .stolk-chip{display:inline-flex;align-items:center;background:var(--green-ljus);color:#0d2b17;font-weight:700;font-size:14px;border-radius:99px;padding:3px 11px}
+#stolkampanj .stolk-live{display:inline-flex;align-items:center;gap:7px;font-size:14px;color:#c7c9e6}
+#stolkampanj .stolk-live i{width:9px;height:9px;border-radius:50%;background:var(--green-ljus);box-shadow:0 0 0 0 rgba(101,188,123,.6);animation:stolk-puls 2.2s infinite}
+#stolkampanj[data-state="reserv"] .stolk-live i,#stolkampanj[data-state="manuell"] .stolk-live i{animation:none;background:#9a9cc0}
+@keyframes stolk-puls{0%{box-shadow:0 0 0 0 rgba(101,188,123,.6)}70%{box-shadow:0 0 0 9px rgba(101,188,123,0)}100%{box-shadow:0 0 0 0 rgba(101,188,123,0)}}
+#stolkampanj .stolk-klart{margin-top:14px!important;font-weight:700;color:var(--gold-ljus);font-size:18px}
+#stolkampanj .stolk-toast{margin-top:14px!important;display:inline-block;background:#fff;color:var(--navy);font-weight:700;border-radius:12px;padding:8px 14px;animation:stolk-in .5s ease-out}
+@keyframes stolk-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+#stolkampanj .stolk-hero-cta{display:inline-flex;align-items:center;justify-content:center;margin-top:20px;min-height:52px;padding:12px 26px;border-radius:14px;background:var(--gold);color:var(--navy-3);font-weight:800;font-size:17px;text-decoration:none;border:0}
+#stolkampanj .stolk-hero-cta:hover{background:#d6c46c;color:var(--navy-3)}
+/* Kort */
+#stolkampanj .stolk-main{display:grid;grid-template-columns:minmax(0,1fr);gap:20px;margin-top:20px}
+#stolkampanj .stolk-card{background:#fff;border:1px solid var(--line);border-radius:20px;padding:clamp(18px,4cqi,30px)}
+#stolkampanj .stolk-ge{scroll-margin-top:110px}
+/* Stolväljare */
+#stolkampanj .stolk-stepper{display:flex;align-items:center;gap:12px}
+#stolkampanj .stolk-step{flex:0 0 auto;width:54px;height:54px;border-radius:50%;border:2px solid var(--navy);background:#fff;color:var(--navy);font-size:28px;font-weight:600;line-height:1;padding:0;display:grid;place-items:center}
+#stolkampanj .stolk-step:hover{background:var(--navy);color:#fff}
+#stolkampanj .stolk-antal{flex:1;display:flex;align-items:baseline;justify-content:center;gap:8px;background:var(--cream);border:1px solid var(--line);border-radius:16px;padding:6px 10px;min-width:0;margin:0;cursor:text}
+#stolkampanj .stolk-antal input{width:3.2ch;min-width:0;height:auto;border:0;background:transparent;box-shadow:none;padding:0;margin:0;font-family:inherit;font-size:44px;font-weight:800;line-height:1.1;color:var(--navy);text-align:right;-moz-appearance:textfield;appearance:textfield;outline:none}
+#stolkampanj .stolk-antal input::-webkit-outer-spin-button,#stolkampanj .stolk-antal input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+#stolkampanj .stolk-antal:focus-within{outline:3px solid var(--gold);outline-offset:2px}
+#stolkampanj .stolk-antal span{font-size:20px;font-weight:600;color:var(--muted)}
+#stolkampanj .stolk-snabb{display:flex;gap:8px;margin-top:12px}
+#stolkampanj .stolk-snabb button{flex:1;min-height:44px;border-radius:12px;border:1px solid var(--line);background:#fff;color:var(--navy);font-weight:700;font-size:16px;padding:6px}
+#stolkampanj .stolk-snabb button[aria-pressed="true"]{background:var(--navy);border-color:var(--navy);color:#fff}
+#stolkampanj .stolk-summa{margin-top:16px!important;font-size:17px;color:var(--muted)}
+#stolkampanj .stolk-summa strong{color:var(--ink);font-size:22px;font-weight:800}
+/* Betala */
+#stolkampanj .stolk-inapp{display:none;margin-top:14px!important;font-size:14px;background:#fff7dc;border:1px solid #efdc95;border-radius:12px;padding:10px 12px;color:#4d4316}
+#stolkampanj.is-mobil.is-inapp .stolk-inapp{display:block}
+#stolkampanj .stolk-swishknapp{display:none;align-items:center;justify-content:center;text-align:center;margin-top:16px;min-height:58px;padding:14px 18px;border-radius:16px;background:var(--navy);color:#fff;font-size:18px;font-weight:800;text-decoration:none;border:0}
+#stolkampanj .stolk-swishknapp:hover,#stolkampanj .stolk-swishknapp:active{background:var(--navy-3);color:#fff}
+#stolkampanj.is-mobil .stolk-swishknapp{display:flex}
+#stolkampanj .stolk-qrdetails{margin-top:18px}
+#stolkampanj .stolk-qrdetails summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:15px;padding:6px 0}
+#stolkampanj:not(.is-mobil) .stolk-qrdetails summary{display:none}
+#stolkampanj .stolk-qrbox{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-top:6px}
+#stolkampanj .stolk-qr{width:196px;height:196px;flex:0 0 auto;background:#fff;border:1px solid var(--line);border-radius:14px;padding:8px;display:grid;place-items:center}
+#stolkampanj .stolk-qr svg{width:100%;height:100%;display:block}
+#stolkampanj .stolk-qrfel{font-size:13px;color:var(--muted);text-align:center;padding:8px}
+#stolkampanj .stolk-qrtext{display:flex;flex-direction:column;gap:2px;font-size:15px;color:var(--muted);min-width:150px;flex:1}
+#stolkampanj .stolk-qrtext b{color:var(--ink);font-size:17px}
+#stolkampanj .stolk-hjalp{margin-top:14px;background:#fff7dc;border:1px solid #efdc95;border-radius:12px;padding:10px 12px;font-size:15px;color:#4d4316}
+#stolkampanj .stolk-manuellt{margin-top:20px;border-top:1px solid var(--line);padding-top:14px}
+#stolkampanj .stolk-liten{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px!important}
+#stolkampanj .stolk-manuellt dl div{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px dashed var(--line)}
+#stolkampanj .stolk-manuellt dl div:last-child{border-bottom:0}
+#stolkampanj .stolk-manuellt dt{font-size:14px;color:var(--muted);margin:0;font-weight:400}
+#stolkampanj .stolk-manuellt dd{display:flex;align-items:center;gap:10px;font-weight:700;color:var(--ink);font-size:16px;text-align:right}
+#stolkampanj .stolk-manuellt button,#stolkampanj .stolk-delaknappar button,#stolkampanj .stolk-delaknappar a{border:1px solid var(--line);background:#fff;color:var(--navy);font-size:13px;font-weight:700;border-radius:10px;padding:6px 10px;min-height:34px;line-height:1.2;text-decoration:none;display:inline-flex;align-items:center}
+#stolkampanj .stolk-manuellt button:hover,#stolkampanj .stolk-delaknappar button:hover,#stolkampanj .stolk-delaknappar a:hover{border-color:var(--navy)}
+#stolkampanj .stolk-tack{margin-top:18px;background:#ecf7ef;border:1px solid #bfe3c9;border-radius:14px;padding:14px 16px;color:#173d24}
+#stolkampanj .stolk-tack p+p{margin-top:6px!important}
+#stolkampanj .stolk-tack-rubrik{font-weight:800;font-size:18px}
+#stolkampanj .stolk-knapp-wa{display:inline-flex;margin-top:10px;background:var(--green);color:#fff;font-weight:700;border-radius:12px;padding:10px 14px;text-decoration:none}
+/* Salen */
+#stolkampanj .stolk-legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--muted);margin:-4px 0 14px!important}
+#stolkampanj .stolk-legend span{display:inline-flex;align-items:center;gap:6px}
+#stolkampanj .stolk-legend i{width:12px;height:12px;border-radius:3px;background:var(--ledig)}
+#stolkampanj .stolk-legend i.is-given{background:var(--navy)}
+#stolkampanj .stolk-legend i.is-idag{background:var(--gold)}
+#stolkampanj .stolk-grid{--kolumner:20;display:grid;grid-template-columns:repeat(var(--kolumner),1fr);gap:clamp(1px,.5cqi,4px)}
+#stolkampanj .stolk-grid span{aspect-ratio:1;background:var(--ledig);-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 2.5h10A1.5 1.5 0 0 1 18.5 4v7.5h-13V4A1.5 1.5 0 0 1 7 2.5zM4.5 12.5h15a1 1 0 0 1 1 1V15a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1v-1.5a1 1 0 0 1 1-1zM5.6 16h2.3v6H5.6zM16.1 16h2.3v6h-2.3z'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 2.5h10A1.5 1.5 0 0 1 18.5 4v7.5h-13V4A1.5 1.5 0 0 1 7 2.5zM4.5 12.5h15a1 1 0 0 1 1 1V15a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1v-1.5a1 1 0 0 1 1-1zM5.6 16h2.3v6H5.6zM16.1 16h2.3v6h-2.3z'/%3E%3C/svg%3E") center/contain no-repeat;transition:background-color .4s}
+#stolkampanj .stolk-grid span.is-given{background:var(--navy)}
+#stolkampanj .stolk-grid span.is-idag{background:var(--gold)}
+#stolkampanj .stolk-dagar{list-style:none;display:grid;gap:8px}
+#stolkampanj .stolk-dagar li{display:grid;grid-template-columns:5.5em 1fr auto;align-items:center;gap:10px;font-size:15px;margin:0}
+#stolkampanj .stolk-dagar li.stolk-tom{display:block;color:var(--muted)}
+#stolkampanj .stolk-dagar .d{color:var(--muted)}
+#stolkampanj .stolk-dagar .b{height:10px;border-radius:99px;background:var(--ledig);overflow:hidden}
+#stolkampanj .stolk-dagar .b i{display:block;height:100%;border-radius:inherit;background:var(--navy)}
+#stolkampanj .stolk-dagar li:first-child .b i{background:var(--gold)}
+#stolkampanj .stolk-dagar .n{font-weight:700;white-space:nowrap}
+/* Varför */
+#stolkampanj .stolk-varfor{display:grid;grid-template-columns:minmax(0,1fr);gap:20px;margin-top:20px;background:var(--cream);border:1px solid var(--line);border-radius:20px;padding:clamp(18px,4cqi,34px)}
+#stolkampanj .stolk-punkter{list-style:none;display:grid;gap:12px}
+#stolkampanj .stolk-punkter li{position:relative;padding-left:26px;color:var(--muted);margin:0}
+#stolkampanj .stolk-punkter li::before{content:"";position:absolute;left:2px;top:.45em;width:11px;height:11px;background:var(--gold);transform:rotate(45deg);border-radius:2px}
+#stolkampanj .stolk-punkter b{color:var(--ink)}
+#stolkampanj .stolk-hadith{border:0;border-left:4px solid var(--gold);background:#fff;border-radius:0 16px 16px 0;padding:18px 20px;margin:0;quotes:none;font-style:normal}
+#stolkampanj .stolk-hadith::before,#stolkampanj .stolk-hadith::after{content:none}
+#stolkampanj .stolk-hadith p{font-size:18px;line-height:1.5;color:var(--ink);font-style:normal}
+#stolkampanj .stolk-hadith cite{display:block;margin-top:10px;font-size:14px;color:var(--muted);font-style:normal}
+/* Dela + FAQ */
+#stolkampanj .stolk-dela{margin-top:20px;text-align:center;padding:clamp(18px,4cqi,30px) 8px}
+#stolkampanj .stolk-dela p{color:var(--muted)}
+#stolkampanj .stolk-delaknappar{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin-top:14px}
+#stolkampanj .stolk-delaknappar a,#stolkampanj .stolk-delaknappar button{font-size:15px;padding:10px 16px;min-height:44px}
+#stolkampanj .stolk-faq{margin-top:8px;padding:0 0 10px}
+#stolkampanj .stolk-faq details{border-top:1px solid var(--line);padding:4px 0}
+#stolkampanj .stolk-faq details:last-child{border-bottom:1px solid var(--line)}
+#stolkampanj .stolk-faq summary{cursor:pointer;font-weight:700;color:var(--navy);padding:12px 32px 12px 0;list-style:none;position:relative}
+#stolkampanj .stolk-faq summary::-webkit-details-marker{display:none}
+#stolkampanj .stolk-faq summary::after{content:"+";position:absolute;right:4px;top:50%;transform:translateY(-50%);font-size:22px;font-weight:400;color:var(--gold)}
+#stolkampanj .stolk-faq details[open] summary::after{content:"−"}
+#stolkampanj .stolk-faq details p{color:var(--muted);padding:0 0 12px}
+/* Bredare skärmar */
+@container (min-width:760px){
+  #stolkampanj .stolk-main{grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start}
+  #stolkampanj .stolk-varfor{grid-template-columns:1fr 1fr;align-items:center}
+  #stolkampanj .stolk-hero-cta{display:none}
+}
+/* Smala spalter (t.ex. mobil med temats sidmarginaler) */
+@container (max-width:360px){
+  #stolkampanj .stolk-step{width:44px;height:44px;font-size:24px}
+  #stolkampanj .stolk-stepper{gap:8px}
+  #stolkampanj .stolk-antal input{font-size:34px}
+  #stolkampanj .stolk-antal span{font-size:16px}
+  #stolkampanj .stolk-snabb button{font-size:15px;min-height:42px}
+  #stolkampanj .stolk-qr{width:168px;height:168px}
+  #stolkampanj .stolk-dagar li{grid-template-columns:4.2em 1fr auto;font-size:14px}
+}
+@media (prefers-reduced-motion:reduce){#stolkampanj *{animation:none!important;transition:none!important}}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js" integrity="sha384-mZT2gIty7ZDdOGkxfP6joZcYdMW1Jvj9dRlfpTmaJAKKXTqzygtB22k7FLe+KZC1" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+(function () {
+  "use strict";
+  var root = document.getElementById("stolkampanj");
+  if (!root || root.getAttribute("data-init")) return;
+  root.setAttribute("data-init", "1");
+
+  var C = Object.assign({
+    swishNummer: "", meddelande: "stol", prisPerStol: 500, malStolar: 400,
+    dataUrl: "", insamlatKr: 0, uppdateraVarjeMinut: 2, sidansUrl: ""
+  }, window.STOLKAMPANJ || {});
+  var NR = String(C.swishNummer).replace(/\D/g, "");
+  var MEDD = String(C.meddelande || "stol");
+  var PRIS = Number(C.prisPerStol) > 0 ? Number(C.prisPerStol) : 500;
+  var MAL = Number(C.malStolar) > 0 ? Math.floor(Number(C.malStolar)) : 400;
+  var TZ = "Europe/Stockholm";
+  var CACHE = "stolkampanj:v1:" + (C.dataUrl || "manuell");
+
+  /* ---------- Hjälpfunktioner ---------- */
+  function alla(sel) { return Array.prototype.slice.call(root.querySelectorAll(sel)); }
+  function en(sel) { return root.querySelector(sel); }
+  function satt(namn, text) { alla('[data-stolk="' + namn + '"]').forEach(function (el) { el.textContent = text; }); }
+  function heltal(n) { return Math.round(n).toLocaleString("sv-SE"); }
+  function kr(n) { return heltal(n) + " kr"; }
+  function stolOrd(n) { return n === 1 ? "stol" : "stolar"; }
+  function visaNummer(nr) { return nr.length === 10 ? nr.slice(0, 3) + " " + nr.slice(3, 6) + " " + nr.slice(6, 8) + " " + nr.slice(8) : nr; }
+  function mq(q) { return !!(window.matchMedia && window.matchMedia(q).matches); }
+  var lugn = mq("(prefers-reduced-motion: reduce)");
+  var mobil = mq("(hover: none) and (pointer: coarse)");
+  var inApp = /FBAN|FBAV|FB_IAB|FBIOS|Instagram|Snapchat|TikTok|musical_ly|Line\//i.test(navigator.userAgent || "");
+  root.classList.toggle("is-mobil", mobil);
+  root.classList.toggle("is-inapp", inApp);
+  var qrDetails = en(".stolk-qrdetails");
+  if (mobil && qrDetails) qrDetails.removeAttribute("open");
+
+  var dagFormat = new Intl.DateTimeFormat("sv-SE", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" });
+  function dagStr(date) { return dagFormat.format(date); }
+  function relDag(d) {
+    var nu = Date.now();
+    if (d === dagStr(new Date(nu))) return "idag";
+    if (d === dagStr(new Date(nu - 864e5))) return "igår";
+    var dt = new Date(d + "T12:00:00");
+    return isNaN(dt) ? d : dt.toLocaleDateString("sv-SE", { day: "numeric", month: "short" }).replace(/\.$/, "");
+  }
+
+  /* ---------- Fasta texter ---------- */
+  satt("mal", heltal(MAL));
+  satt("malkr", kr(MAL * PRIS));
+  satt("pris", kr(PRIS));
+  satt("nummer", visaNummer(NR));
+  satt("meddelande", MEDD);
+  var bar = en(".stolk-bar");
+  bar.setAttribute("aria-valuemax", String(MAL));
+
+  /* ---------- Swish ---------- */
+  // QR-formatet är samma som Swish officiella QR-generator skapar: C<nummer>;<belopp>;<meddelande>;<lås>
+  // (lås 0 = mottagare, belopp och meddelande går inte att ändra)
+  function swishQrText(belopp) {
+    return "C" + NR + ";" + belopp + ";" + encodeURIComponent(MEDD).replace(/%20/g, "+") + ";0";
+  }
+  function swishAppLank(belopp) {
+    var data = { version: 1, payee: { value: NR }, amount: { value: belopp, editable: false }, message: { value: MEDD, editable: false } };
+    return "swish://payment?data=" + encodeURIComponent(JSON.stringify(data));
+  }
+
+  var qrVantar = false, qrForsok = 0;
+  function ritaQr() {
+    var el = en('[data-stolk="qr"]');
+    if (!el) return;
+    if (typeof window.qrcode !== "function") {
+      if (qrVantar) return;
+      if (qrForsok++ < 40) { qrVantar = true; setTimeout(function () { qrVantar = false; ritaQr(); }, 250); }
+      else el.innerHTML = '<p class="stolk-qrfel">QR-koden kunde inte laddas. Swisha manuellt med uppgifterna nedan.</p>';
+      return;
+    }
+    var belopp = antal * PRIS;
+    var qr = window.qrcode(0, "M");
+    qr.addData(swishQrText(belopp));
+    qr.make();
+    var n = qr.getModuleCount(), m = 2, s = n + m * 2, d = "";
+    for (var r = 0; r < n; r++) for (var c = 0; c < n; c++) if (qr.isDark(r, c)) d += "M" + (c + m) + " " + (r + m) + "h1v1h-1z";
+    el.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + s + " " + s + '" shape-rendering="crispEdges" role="img" aria-label="Swish QR-kod: ' + kr(belopp) + ' till ' + visaNummer(NR) + ', meddelande ' + MEDD + '"><rect width="' + s + '" height="' + s + '" fill="#fff"/><path fill="#1c1d3b" d="' + d + '"/></svg>';
+    el.setAttribute("data-payload", swishQrText(belopp));
+  }
+
+  /* ---------- Stolväljare ---------- */
+  var antal = 1;
+  var input = en("#stolk-antal");
+  function sattAntal(n, franInput) {
+    n = Math.max(1, Math.min(999, Math.floor(Number(n) || 1)));
+    antal = n;
+    if (!franInput) input.value = String(n);
+    alla("[data-stolk-antal]").forEach(function (b) { b.setAttribute("aria-pressed", String(Number(b.getAttribute("data-stolk-antal")) === n)); });
+    var belopp = n * PRIS;
+    satt("belopp", kr(belopp));
+    satt("antaltext", heltal(n) + " " + stolOrd(n));
+    satt("stolord", stolOrd(n));
+    alla('[data-stolk="applank"]').forEach(function (a) { a.setAttribute("href", swishAppLank(belopp)); });
+    ritaQr();
+  }
+  alla("[data-stolk-steg]").forEach(function (b) {
+    b.addEventListener("click", function () { sattAntal(antal + Number(b.getAttribute("data-stolk-steg"))); });
+  });
+  alla("[data-stolk-antal]").forEach(function (b) {
+    b.addEventListener("click", function () { sattAntal(Number(b.getAttribute("data-stolk-antal"))); });
+  });
+  input.addEventListener("input", function () { if (input.value !== "") sattAntal(input.value, true); });
+  input.addEventListener("blur", function () { sattAntal(input.value); });
+
+  /* ---------- Kopiera ---------- */
+  function lank() { return C.sidansUrl || location.href.split("#")[0]; }
+  function kopiera(text, knapp) {
+    function klart() {
+      var gammal = knapp.getAttribute("data-text") || knapp.textContent;
+      knapp.setAttribute("data-text", gammal);
+      knapp.textContent = "Kopierat ✓";
+      setTimeout(function () { knapp.textContent = gammal; }, 1600);
+    }
+    if (navigator.clipboard && window.isSecureContext) { navigator.clipboard.writeText(text).then(klart, function () { reserv(); }); }
+    else reserv();
+    function reserv() {
+      var t = document.createElement("textarea");
+      t.value = text; t.setAttribute("readonly", ""); t.style.position = "fixed"; t.style.opacity = "0";
+      document.body.appendChild(t); t.select();
+      try { document.execCommand("copy"); klart(); } catch (e) { /* ignorera */ }
+      document.body.removeChild(t);
+    }
+  }
+  alla("[data-stolk-kopiera]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var vad = b.getAttribute("data-stolk-kopiera");
+      var text = vad === "nummer" ? NR : vad === "belopp" ? String(antal * PRIS) : vad === "meddelande" ? MEDD : lank();
+      kopiera(text, b);
+    });
+  });
+
+  /* ---------- Dela ---------- */
+  var delaText = "Stockholms moské samlar in till " + heltal(MAL) + " stolar så att äldre och den som inte kan sitta på golvet får en plats i bönen. En stol kostar " + kr(PRIS) + " – en sadaqa jāriya. Var med och ge en stol:";
+  alla('[data-stolk="wa"]').forEach(function (a) { a.href = "https://wa.me/?text=" + encodeURIComponent(delaText + " " + lank()); });
+  alla('[data-stolk="fb"]').forEach(function (a) { a.href = "https://www.facebook.com/sharer/sharer.php?u=" + encodeURIComponent(lank()); });
+  var delaKnapp = en('[data-stolk="dela"]');
+  if (navigator.share && delaKnapp) {
+    delaKnapp.hidden = false;
+    delaKnapp.addEventListener("click", function () {
+      navigator.share({ title: "Ge en stol till Stockholms moské", text: delaText, url: lank() }).catch(function () {});
+    });
+  }
+
+  /* ---------- Efter Swish ---------- */
+  var klickadSwish = false, lamnade = false;
+  alla('[data-stolk="applank"]').forEach(function (a) {
+    a.addEventListener("click", function () {
+      klickadSwish = true; lamnade = false;
+      en('[data-stolk="hjalp"]').hidden = true;
+      setTimeout(function () {
+        if (!lamnade && document.visibilityState === "visible") en('[data-stolk="hjalp"]').hidden = false;
+      }, 2500);
+    });
+  });
+
+  /* ---------- Läsa data (Google Kalkylark som CSV) ---------- */
+  function tolkaCsv(text) {
+    var rader = [], rad = [], f = "", q = false;
+    for (var i = 0; i < text.length; i++) {
+      var ch = text.charAt(i);
+      if (q) {
+        if (ch === '"') { if (text.charAt(i + 1) === '"') { f += '"'; i++; } else q = false; }
+        else f += ch;
+      } else if (ch === '"') q = true;
+      else if (ch === ",") { rad.push(f); f = ""; }
+      else if (ch === "\n" || ch === "\r") {
+        if (ch === "\r" && text.charAt(i + 1) === "\n") i++;
+        rad.push(f); rader.push(rad); rad = []; f = "";
+      } else f += ch;
+    }
+    if (f !== "" || rad.length) { rad.push(f); rader.push(rad); }
+    return rader;
+  }
+  function tal(s) {
+    s = String(s == null ? "" : s).replace(/kr|sek|:-/gi, "").replace(/[\s  ]/g, "").replace(/−/g, "-");
+    if (!s) return 0;
+    var k = s.lastIndexOf(","), p = s.lastIndexOf(".");
+    if (k > -1 && p > -1) s = k > p ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, "");
+    else if (k > -1) s = /,\d{1,2}$/.test(s) ? s.replace(",", ".") : s.replace(/,/g, "");
+    else if (p > -1 && !/\.\d{1,2}$/.test(s)) s = s.replace(/\./g, "");
+    var n = parseFloat(s);
+    return isFinite(n) ? n : 0;
+  }
+  function tva(x) { return ("0" + x).slice(-2); }
+  function datum(s) {
+    s = String(s || "").trim();
+    var m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2})[:.](\d{2}))?/);
+    if (m) return { d: m[1] + "-" + tva(m[2]) + "-" + tva(m[3]), t: m[4] ? tva(m[4]) + ":" + m[5] : "" };
+    m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/); // amerikanskt M/D/ÅÅÅÅ
+    if (m) return { d: m[3] + "-" + tva(m[1]) + "-" + tva(m[2]), t: m[4] ? tva(m[4]) + ":" + m[5] : "" };
+    m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:\s+(\d{1,2})[:.](\d{2}))?/); // D.M.ÅÅÅÅ
+    if (m) return { d: m[3] + "-" + tva(m[2]) + "-" + tva(m[1]), t: m[4] ? tva(m[4]) + ":" + m[5] : "" };
+    return null;
+  }
+  function tolkaData(rader) {
+    rader = rader.filter(function (r) { return r.some(function (c) { return String(c).trim() !== ""; }); });
+    var ut = [];
+    if (!rader.length) return { rader: ut };
+    var rubrik = rader[0].map(function (h) { return String(h).toLowerCase().trim(); });
+    var harRubrik = rubrik.some(function (h) { return /[a-zåäö]/.test(h) && !datum(h); });
+    var iDatum = -1, iBelopp = -1, iStolar = -1;
+    if (harRubrik) {
+      rubrik.forEach(function (h, i) {
+        if (iDatum < 0 && /datum|tid|date|time/.test(h)) iDatum = i;
+        if (iBelopp < 0 && /belopp|kronor|summa|amount|\bkr\b|sek/.test(h)) iBelopp = i;
+        if (iStolar < 0 && /stol/.test(h)) iStolar = i;
+      });
+      rader = rader.slice(1);
+    } else { iDatum = 0; iBelopp = 1; }
+    if (iBelopp < 0 && iStolar < 0) iBelopp = iDatum === 0 ? 1 : 0;
+    rader.forEach(function (r) {
+      var belopp = iBelopp >= 0 ? tal(r[iBelopp]) : tal(r[iStolar]) * PRIS;
+      if (!belopp) return;
+      var dt = iDatum >= 0 ? datum(r[iDatum]) : null;
+      ut.push({ d: dt ? dt.d : null, t: dt ? dt.t : "", kr: belopp });
+    });
+    return { rader: ut };
+  }
+  function berakna(data) {
+    var rader = data.rader || [];
+    var total = 0, utanDatum = 0, perDag = {}, senast = null;
+    rader.forEach(function (r) {
+      total += r.kr;
+      if (!r.d) { utanDatum += r.kr; return; }
+      perDag[r.d] = (perDag[r.d] || 0) + r.kr;
+      var nyckel = r.d + " " + (r.t || "");
+      if (!senast || nyckel > senast.nyckel) senast = { d: r.d, t: r.t, nyckel: nyckel };
+    });
+    var kum = utanDatum, dagar = [];
+    Object.keys(perDag).sort().forEach(function (d) {
+      var fore = Math.max(0, Math.floor(kum / PRIS));
+      kum += perDag[d];
+      dagar.push({ d: d, kr: perDag[d], stolar: Math.max(0, Math.floor(kum / PRIS)) - fore });
+    });
+    var idag = dagStr(new Date());
+    var idagRad = dagar.filter(function (x) { return x.d === idag; })[0];
+    var stolar = Math.max(0, Math.floor(total / PRIS));
+    return { totalKr: Math.max(0, total), stolar: stolar, idag: idagRad ? Math.max(0, idagRad.stolar) : 0, dagar: dagar.reverse(), senast: senast };
+  }
+
+  /* ---------- Visa ---------- */
+  var grid = en('[data-stolk="grid"]'), rutor = [];
+  (function byggGrid() {
+    var antalRutor = Math.min(MAL, 2000);
+    grid.style.setProperty("--kolumner", String(MAL <= 400 ? Math.min(20, Math.ceil(Math.sqrt(antalRutor))) : 25));
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < antalRutor; i++) { var s = document.createElement("span"); frag.appendChild(s); rutor.push(s); }
+    grid.appendChild(frag);
+  })();
+
+  var visat = null, visatTal = 0, toastTimer = null;
+  function rakna(till) {
+    var el = en('[data-stolk="stolar"]');
+    var fran = visatTal;
+    visatTal = till;
+    if (lugn || fran === till) { el.textContent = heltal(till); return; }
+    var start = null, tid = 1200;
+    function steg(ts) {
+      if (start === null) start = ts;
+      var p = Math.min(1, (ts - start) / tid), e = 1 - Math.pow(1 - p, 3);
+      el.textContent = heltal(Math.round(fran + (till - fran) * e));
+      if (p < 1) requestAnimationFrame(steg);
+    }
+    requestAnimationFrame(steg);
+  }
+  function rendera(s) {
+    rakna(s.stolar);
+    satt("kr", kr(s.totalKr));
+    var pct = Math.min(100, (s.totalKr / (MAL * PRIS)) * 100);
+    en(".stolk-bar-fill").style.width = (s.totalKr > 0 ? Math.max(pct, 1.2) : 0) + "%";
+    bar.setAttribute("aria-valuenow", String(Math.min(s.stolar, MAL)));
+    bar.setAttribute("aria-valuetext", heltal(s.stolar) + " av " + heltal(MAL) + " stolar");
+
+    var chip = en('[data-stolk="idag"]');
+    chip.hidden = !(s.idag > 0);
+    chip.textContent = "+" + heltal(s.idag) + " " + stolOrd(s.idag) + " idag";
+
+    var upp = "Uppdateras löpande";
+    if (s.senast) upp = "Senast registrerat " + relDag(s.senast.d) + (s.senast.t ? " kl. " + s.senast.t : "");
+    satt("uppdaterad", upp);
+    en('[data-stolk="klart"]').hidden = s.stolar < MAL;
+
+    var fore = Math.max(0, s.stolar - s.idag);
+    for (var i = 0; i < rutor.length; i++) {
+      rutor[i].className = i < fore ? "is-given" : i < s.stolar ? "is-idag" : "";
+    }
+
+    var lista = en('[data-stolk="dagar"]');
+    var visas = s.dagar.filter(function (x) { return x.kr > 0; }).slice(0, 5);
+    if (!visas.length) {
+      lista.innerHTML = s.stolar > 0 ? '<li class="stolk-tom">' + heltal(s.stolar) + " " + stolOrd(s.stolar) + " givna hittills.</li>" : '<li class="stolk-tom">Bli den första att ge en stol!</li>';
+    } else {
+      var max = Math.max.apply(null, visas.map(function (x) { return x.stolar; }).concat([1]));
+      lista.innerHTML = visas.map(function (x) {
+        var dag = relDag(x.d);
+        return '<li><span class="d">' + dag.charAt(0).toUpperCase() + dag.slice(1) + '</span><span class="b"><i style="width:' + Math.max(4, (x.stolar / max) * 100) + '%"></i></span><span class="n">+' + heltal(x.stolar) + " " + stolOrd(x.stolar) + "</span></li>";
+      }).join("");
+    }
+
+    if (visat && s.stolar > visat.stolar) {
+      var diff = s.stolar - visat.stolar, t = en('[data-stolk="toast"]');
+      t.textContent = "+" + heltal(diff) + " " + stolOrd(diff) + " just nu – tack till alla givare!";
+      t.hidden = false;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { t.hidden = true; }, 7000);
+    }
+    visat = s;
+  }
+
+  function manuellData() { return { rader: [{ d: null, t: "", kr: Number(C.insamlatKr) || 0 }] }; }
+  var senastHamtat = 0;
+  function hamta() {
+    senastHamtat = Date.now();
+    if (!C.dataUrl) { root.setAttribute("data-state", "manuell"); rendera(berakna(manuellData())); return; }
+    fetch(C.dataUrl, { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
+      .then(function (text) {
+        if (/^\s*</.test(text)) throw new Error("Fick HTML i stället för CSV – är kalkylarket publicerat som CSV?");
+        var data = tolkaData(tolkaCsv(text));
+        try { localStorage.setItem(CACHE, JSON.stringify(data)); } catch (e) { /* privat läge */ }
+        root.setAttribute("data-state", "live");
+        rendera(berakna(data));
+      })
+      .catch(function (fel) {
+        if (window.console) console.warn("[stolkampanj] Kunde inte hämta siffror:", fel);
+        root.setAttribute("data-state", "reserv");
+        if (visat) return;
+        var data = null;
+        try { data = JSON.parse(localStorage.getItem(CACHE) || "null"); } catch (e) { data = null; }
+        rendera(berakna(data && data.rader ? data : manuellData()));
+      });
+  }
+
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "hidden") { if (klickadSwish) lamnade = true; return; }
+    if (klickadSwish && lamnade) {
+      klickadSwish = false;
+      en('[data-stolk="hjalp"]').hidden = true;
+      en('[data-stolk="tack"]').hidden = false;
+    }
+    if (Date.now() - senastHamtat > 20000) hamta();
+  });
+  setInterval(function () { if (document.visibilityState === "visible") hamta(); }, Math.max(1, Number(C.uppdateraVarjeMinut) || 2) * 60000);
+
+  sattAntal(1);
+  hamta();
+})();
+</script>

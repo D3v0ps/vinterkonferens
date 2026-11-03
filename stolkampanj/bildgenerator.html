@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bildgenerator – Stolkampanjen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js" integrity="sha384-mZT2gIty7ZDdOGkxfP6joZcYdMW1Jvj9dRlfpTmaJAKKXTqzygtB22k7FLe+KZC1" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+/* ---------- INSTÄLLNINGAR (samma värden som på kampanjsidan) ---------- */
+window.KONFIG = {
+  swishNummer: "1231669597",
+  meddelande: "stol",
+  prisPerStol: 500,
+  malStolar: 400,
+  dataUrl: "",                          // Samma CSV-länk som på kampanjsidan → siffrorna fylls i automatiskt
+  lankText: "stockholmsmoske.se/stolar" // Visas på bilderna – ändra till sidans riktiga adress
+};
+</script>
+<style>
+  :root{--navy:#23256f;--ink:#1c1d3b;--muted:#585a76;--gold:#c6b258;--line:#e6e2d4;--bg:#f4f2ec}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:"Open Sans",system-ui,sans-serif;font-size:15px;line-height:1.5}
+  header{background:var(--navy);color:#fff;padding:16px 20px}
+  header h1{margin:0;font-size:20px}
+  header p{margin:2px 0 0;color:#cfd0ee;font-size:14px}
+  main{display:grid;grid-template-columns:1fr;gap:20px;padding:16px;max-width:1300px;margin:0 auto}
+  @media (min-width:900px){main{grid-template-columns:360px 1fr;padding:24px}}
+  .panel{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;display:grid;gap:16px;align-content:start}
+  fieldset{border:0;margin:0;padding:0;display:grid;gap:8px}
+  legend,label>span{font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:4px;padding:0}
+  .val{display:flex;flex-wrap:wrap;gap:6px}
+  .val label{flex:1 1 auto}
+  .val input{position:absolute;opacity:0;pointer-events:none}
+  .val label span{display:block;text-align:center;border:1px solid var(--line);border-radius:10px;padding:8px 10px;cursor:pointer;font-weight:600;text-transform:none;letter-spacing:0;font-size:14px;color:var(--navy);margin:0}
+  .val input:checked+span{background:var(--navy);color:#fff;border-color:var(--navy)}
+  .val input:focus-visible+span{outline:3px solid var(--gold);outline-offset:2px}
+  label{display:grid;gap:4px}
+  input[type=number],input[type=text],textarea{font:inherit;border:1px solid var(--line);border-radius:10px;padding:9px 11px;width:100%;background:#fff;color:var(--ink)}
+  textarea{min-height:84px;resize:vertical}
+  .rad{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .tips{font-size:13px;color:var(--muted);margin:0}
+  button{font:inherit;font-weight:700;border-radius:12px;border:1px solid var(--navy);background:#fff;color:var(--navy);padding:10px 14px;cursor:pointer}
+  button.primar{background:var(--navy);color:#fff;font-size:16px;padding:14px}
+  .forhand{display:grid;place-items:center;background:#e9e6dc;border-radius:16px;padding:16px;min-height:420px}
+  canvas{max-width:100%;max-height:78vh;height:auto;width:auto;box-shadow:0 8px 30px rgba(20,20,60,.25);border-radius:6px;background:#fff}
+  #status{font-size:13px;color:var(--muted);min-height:1.5em;margin:0}
+</style>
+</head>
+<body>
+<header>
+  <h1>Bildgenerator – 400 stolar</h1>
+  <p>Gör dagens bild för Instagram, Facebook och WhatsApp. Välj format, kontrollera siffrorna, ladda ner.</p>
+</header>
+<main>
+  <form class="panel" id="form" onsubmit="return false">
+    <fieldset>
+      <legend>Format</legend>
+      <div class="val">
+        <label><input type="radio" name="format" value="story" checked><span>Story 9:16</span></label>
+        <label><input type="radio" name="format" value="inlagg"><span>Inlägg 4:5</span></label>
+        <label><input type="radio" name="format" value="lank"><span>Länkbild</span></label>
+        <label><input type="radio" name="format" value="affisch"><span>Affisch A4</span></label>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Mall</legend>
+      <div class="val">
+        <label><input type="radio" name="mall" value="progress" checked><span>Dagens läge</span></label>
+        <label><input type="radio" name="mall" value="lansering"><span>Lansering</span></label>
+        <label><input type="radio" name="mall" value="tack"><span>Målet nått</span></label>
+      </div>
+    </fieldset>
+    <div class="rad">
+      <label><span>Stolar hittills</span><input type="number" id="stolar" min="0" value="0"></label>
+      <label><span>Nya idag</span><input type="number" id="idag" min="0" value="0"></label>
+    </div>
+    <button type="button" id="hamta" hidden>Hämta senaste siffrorna</button>
+    <label><span>Rubrik</span><input type="text" id="rubrik"></label>
+    <label><span>Undertext</span><textarea id="undertext"></textarea></label>
+    <p class="tips">Du kan skriva {stolar}, {idag}, {kvar} och {mal} i texterna – de byts ut mot siffrorna. Byt mall för att återställa texterna.</p>
+    <button type="button" class="primar" id="ladda">Ladda ner bild (PNG)</button>
+    <p id="status" role="status"></p>
+  </form>
+  <div class="forhand"><canvas id="duk" width="1080" height="1920" aria-label="Förhandsvisning av bilden"></canvas></div>
+</main>
+<script>
+(function () {
+  "use strict";
+  var K = window.KONFIG, PRIS = K.prisPerStol, MAL = K.malStolar;
+  var NR = String(K.swishNummer).replace(/\D/g, "");
+  var NRV = NR.length === 10 ? NR.slice(0,3)+" "+NR.slice(3,6)+" "+NR.slice(6,8)+" "+NR.slice(8) : NR;
+  var F = '"Open Sans", system-ui, sans-serif';
+  var NAVY = "#23256f", DJUP = "#1a1b55", GULD = "#c6b258", CREAM = "#fbf8f0", INK = "#1c1d3b";
+  var STOL = new Path2D("M7 2.5h10A1.5 1.5 0 0 1 18.5 4v7.5h-13V4A1.5 1.5 0 0 1 7 2.5zM4.5 12.5h15a1 1 0 0 1 1 1V15a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1v-1.5a1 1 0 0 1 1-1zM5.6 16h2.3v6H5.6zM16.1 16h2.3v6h-2.3z");
+  var STORLEK = { story: [1080, 1920], inlagg: [1080, 1350], lank: [1200, 630], affisch: [2480, 3508] };
+  var TEXTER = {
+    progress: ["Så långt har vi kommit", "+{idag} stolar idag – tack till alla givare! Ge en stol du också: 500 kr."],
+    lansering: ["Ge en stol till moskén", "Vi köper in {mal} stolar så att den som inte kan sitta på golvet får en plats i bönen."],
+    tack: ["Alhamdulillah – målet är nått!", "{stolar} stolar. Tack till varenda en som gav, delade och bad."]
+  };
+
+  var duk = document.getElementById("duk"), ctx = duk.getContext("2d");
+  var $ = function (id) { return document.getElementById(id); };
+  function val(namn) { return document.querySelector('input[name="' + namn + '"]:checked').value; }
+  function heltal(n) { return Math.round(n).toLocaleString("sv-SE"); }
+  function stolOrd(n) { return n === 1 ? "stol" : "stolar"; }
+  function fyll(text, s) {
+    return String(text)
+      .replace(/\+\{idag\} stolar/g, "+" + heltal(s.idag) + " " + stolOrd(s.idag))
+      .replace(/\{stolar\}/g, heltal(s.stolar)).replace(/\{idag\}/g, heltal(s.idag))
+      .replace(/\{kvar\}/g, heltal(Math.max(0, MAL - s.stolar))).replace(/\{mal\}/g, heltal(MAL));
+  }
+
+  /* ---------- Ritverktyg ---------- */
+  function font(vikt, px) { ctx.font = vikt + " " + px + "px " + F; }
+  function radbryt(text, max) {
+    var ord = String(text).split(/\s+/).filter(Boolean), rader = [], rad = "";
+    ord.forEach(function (o) {
+      var test = rad ? rad + " " + o : o;
+      if (ctx.measureText(test).width > max && rad) { rader.push(rad); rad = o; } else rad = test;
+    });
+    if (rad) rader.push(rad);
+    return rader;
+  }
+  // Anpassar storleken så att texten får plats på maxRader rader
+  function passa(text, vikt, px, minPx, max, maxRader) {
+    for (; px >= minPx; px -= 2) { font(vikt, px); var r = radbryt(text, max); if (r.length <= maxRader) return { rader: r, px: px }; }
+    font(vikt, minPx); return { rader: radbryt(text, max).slice(0, maxRader), px: minPx };
+  }
+  function teckenavstand(x) { ctx.letterSpacing = x; }
+  function rundRekt(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h); }
+  function monster(W, H, ruta, alfa) {
+    ctx.save(); ctx.strokeStyle = GULD; ctx.globalAlpha = alfa; ctx.lineWidth = Math.max(1, ruta / 50);
+    for (var y = 0; y < H + ruta; y += ruta) for (var x = 0; x < W + ruta; x += ruta) {
+      var c = ruta / 2, s = ruta * 0.36;
+      ctx.save(); ctx.translate(x + c, y + c);
+      ctx.strokeRect(-s / 2, -s / 2, s, s); ctx.rotate(Math.PI / 4); ctx.strokeRect(-s / 2, -s / 2, s, s);
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+  function bakgrund(W, H) {
+    var g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, NAVY); g.addColorStop(1, DJUP);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    monster(W, H, W / 14, 0.16);
+  }
+  function stolGrid(x, y, kol, cell, s, farger) {
+    var rader = Math.ceil(MAL / kol), fore = Math.max(0, s.stolar - s.idag);
+    for (var i = 0; i < MAL; i++) {
+      var cx = x + (i % kol) * cell, cy = y + Math.floor(i / kol) * cell;
+      ctx.fillStyle = i < fore ? farger[0] : i < s.stolar ? farger[1] : farger[2];
+      ctx.save(); ctx.translate(cx + cell * 0.08, cy + cell * 0.08); ctx.scale(cell * 0.84 / 24, cell * 0.84 / 24); ctx.fill(STOL); ctx.restore();
+    }
+    return rader * cell;
+  }
+  function stapel(x, y, w, h, s) {
+    var pct = Math.min(1, s.stolar / MAL);
+    ctx.fillStyle = "rgba(255,255,255,.16)"; rundRekt(x, y, w, h, h / 2); ctx.fill();
+    if (pct > 0) {
+      var g = ctx.createLinearGradient(x, 0, x + w, 0); g.addColorStop(0, "#b9a246"); g.addColorStop(1, "#e5d48d");
+      ctx.fillStyle = g; rundRekt(x, y, Math.max(h, w * pct), h, h / 2); ctx.fill();
+    }
+  }
+
+  /* ---------- Story och inlägg (lodrätt flöde) ---------- */
+  function lodrat(W, H, s, mall, text) {
+    bakgrund(W, H);
+    var story = W / H < 0.6, pad = 90, bredd = W - pad * 2;
+    var topp = story ? 200 : 80, botten = story ? H - 210 : H - 80;
+    var block = [];
+    // Etikett
+    block.push({ h: 34, rita: function (y) { font(700, 30); teckenavstand("4px"); ctx.fillStyle = GULD; ctx.fillText("STOCKHOLMS MOSKÉ · " + heltal(MAL) + " STOLAR", pad, y + 28); teckenavstand("0px"); } });
+    // Rubrik
+    var rub = passa(text.rubrik, 800, story ? 96 : 84, 56, bredd, 2);
+    block.push({ h: rub.rader.length * rub.px * 1.08, rita: function (y) { font(800, rub.px); ctx.fillStyle = "#fff"; rub.rader.forEach(function (r, i) { ctx.fillText(r, pad, y + rub.px * 0.92 + i * rub.px * 1.08); }); } });
+    // Undertext
+    if (text.undertext.trim()) {
+      var und = passa(text.undertext, 400, story ? 42 : 38, 30, bredd, story ? 3 : 2);
+      block.push({ h: und.rader.length * und.px * 1.35, rita: function (y) { font(400, und.px); ctx.fillStyle = "#dfe0f5"; und.rader.forEach(function (r, i) { ctx.fillText(r, pad, y + und.px + i * und.px * 1.35); }); } });
+    }
+    // Siffran
+    if (mall !== "lansering" || s.stolar > 0) {
+      var stor = story ? 200 : 170;
+      block.push({ h: stor * 0.9, rita: function (y) {
+        font(800, stor); ctx.fillStyle = GULD; var t = heltal(s.stolar); ctx.fillText(t, pad - 6, y + stor * 0.86);
+        var w = ctx.measureText(t).width; font(600, story ? 52 : 46); ctx.fillStyle = "#fff"; ctx.fillText("av " + heltal(MAL) + " stolar", pad + w + 22, y + stor * 0.86);
+      } });
+      block.push({ h: 26, rita: function (y) { stapel(pad, y, bredd, 26, s); } });
+      block.push({ h: 40, rita: function (y) {
+        font(600, 32); ctx.fillStyle = "#cfd0ee";
+        var t = heltal(s.stolar * PRIS) + " kr av " + heltal(MAL * PRIS) + " kr";
+        ctx.fillText(t, pad, y + 32);
+        if (s.idag > 0) {
+          var x = pad + ctx.measureText(t).width + 24, pill = "+" + heltal(s.idag) + " idag";
+          font(700, 30); var pw = ctx.measureText(pill).width + 36;
+          ctx.fillStyle = "#65bc7b"; rundRekt(x, y - 4, pw, 48, 24); ctx.fill();
+          ctx.fillStyle = "#0d2b17"; ctx.fillText(pill, x + 18, y + 31);
+        }
+      } });
+    }
+    // Uppmaning
+    var cta = { h: story ? 150 : 132, rita: function (y) {
+      ctx.fillStyle = "rgba(255,255,255,.08)"; ctx.strokeStyle = "rgba(198,178,88,.55)"; ctx.lineWidth = 2;
+      rundRekt(pad, y, bredd, cta.h, 26); ctx.fill(); ctx.stroke();
+      font(800, story ? 44 : 40); ctx.fillStyle = "#fff";
+      ctx.fillText("Swisha ”" + K.meddelande + "” till " + NRV, pad + 34, y + (story ? 64 : 58));
+      font(600, story ? 32 : 30); ctx.fillStyle = GULD;
+      ctx.fillText(heltal(PRIS) + " kr per stol · " + K.lankText, pad + 34, y + (story ? 112 : 100));
+    } };
+    // Stolarna – tar den plats som blir över
+    var fast = block.reduce(function (a, b) { return a + b.h; }, 0) + cta.h;
+    var mellan = story ? 44 : 30, antalMellan = block.length + 1;
+    var ledigt = botten - topp - fast - mellan * antalMellan;
+    // Välj det antal kolumner som ger störst stolar på ytan som blir över
+    var kol = 10, cell = 0;
+    for (var k = 10; k <= 50; k++) { var c = Math.min(bredd / k, ledigt / Math.ceil(MAL / k)); if (c > cell) { cell = c; kol = k; } }
+    var gridH = cell * Math.ceil(MAL / kol), gridW = cell * kol;
+    block.push({ h: gridH, rita: function (y) { stolGrid(pad + (bredd - gridW) / 2, y, kol, cell, s, [GULD, "#ffffff", "rgba(255,255,255,.16)"]); } });
+    block.push(cta);
+    var total = block.reduce(function (a, b) { return a + b.h; }, 0) + mellan * (block.length - 1);
+    var y = topp + Math.max(0, (botten - topp - total) / 2);
+    block.forEach(function (b) { b.rita(y); y += b.h + mellan; });
+  }
+
+  /* ---------- Länkbild 1200×630 (förhandsvisning när länken delas) ---------- */
+  function lank(W, H, s, mall, text) {
+    bakgrund(W, H);
+    var pad = 64, vBredd = 600;
+    font(700, 22); teckenavstand("3px"); ctx.fillStyle = GULD; ctx.fillText("STOCKHOLMS MOSKÉ · INSAMLING", pad, 104); teckenavstand("0px");
+    var rub = passa(text.rubrik, 800, 74, 48, vBredd, 2);
+    font(800, rub.px); ctx.fillStyle = "#fff";
+    rub.rader.forEach(function (r, i) { ctx.fillText(r, pad, 104 + 30 + rub.px + i * rub.px * 1.06); });
+    var y = 104 + 30 + rub.rader.length * rub.px * 1.06 + 50;
+    font(600, 30); ctx.fillStyle = "#dfe0f5";
+    ctx.fillText(heltal(MAL) + " stolar · " + heltal(PRIS) + " kr per stol", pad, y);
+    if (s.stolar > 0) { ctx.fillStyle = GULD; ctx.fillText(heltal(s.stolar) + " av " + heltal(MAL) + " givna", pad, y + 46); y += 46; }
+    font(800, 32); ctx.fillStyle = "#fff"; ctx.fillText("Swisha ”" + K.meddelande + "” till " + NRV, pad, y + 70);
+    var cell = 440 / 20;
+    stolGrid(W - pad - 440, (H - 440) / 2, 20, cell, s, [GULD, "#ffffff", "rgba(255,255,255,.16)"]);
+  }
+
+  /* ---------- Affisch A4 med QR (skriv ut till moskén) ---------- */
+  function affisch(W, H, s, mall, text) {
+    ctx.fillStyle = CREAM; ctx.fillRect(0, 0, W, H);
+    var band = 1340;
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, band); ctx.clip(); bakgrund(W, band); ctx.restore();
+    var pad = 200;
+    font(700, 64); teckenavstand("10px"); ctx.fillStyle = GULD; ctx.fillText("STOCKHOLMS MOSKÉ · INSAMLING", pad, 300); teckenavstand("0px");
+    var rub = passa(text.rubrik, 800, 230, 140, W - pad * 2, 2);
+    font(800, rub.px); ctx.fillStyle = "#fff";
+    rub.rader.forEach(function (r, i) { ctx.fillText(r, pad, 300 + 60 + rub.px * 0.95 + i * rub.px * 1.05); });
+    var und = passa(fyll("Vi köper in {mal} stolar så att alla får en plats i bönen. En stol kostar " + heltal(PRIS) + " kr.", s), 400, 76, 56, W - pad * 2, 2);
+    font(400, und.px); ctx.fillStyle = "#e4e5f5";
+    var uy = 300 + 60 + rub.rader.length * rub.px * 1.05 + 110;
+    und.rader.forEach(function (r, i) { ctx.fillText(r, pad, uy + i * und.px * 1.35); });
+
+    // QR: 500 kr förifyllt men går att ändra, meddelandet låst (samma format som Swish egen generator)
+    var kort = { x: pad, y: band - 110, w: W - pad * 2, h: 1640 };
+    ctx.fillStyle = "#fff"; ctx.shadowColor = "rgba(20,20,60,.18)"; ctx.shadowBlur = 60; ctx.shadowOffsetY = 20;
+    rundRekt(kort.x, kort.y, kort.w, kort.h, 70); ctx.fill(); ctx.shadowColor = "transparent";
+    var qrStorlek = 1100, qx = (W - qrStorlek) / 2, qy = kort.y + 120;
+    if (typeof window.qrcode === "function") {
+      var qr = window.qrcode(0, "M");
+      qr.addData("C" + NR + ";" + PRIS + ";" + encodeURIComponent(K.meddelande).replace(/%20/g, "+") + ";2");
+      qr.make();
+      var n = qr.getModuleCount(), m = qrStorlek / n;
+      ctx.fillStyle = INK;
+      for (var r = 0; r < n; r++) for (var c = 0; c < n; c++) if (qr.isDark(r, c)) ctx.fillRect(Math.floor(qx + c * m), Math.floor(qy + r * m), Math.ceil(m), Math.ceil(m));
+    } else { font(600, 60); ctx.fillStyle = INK; ctx.fillText("QR-koden kunde inte laddas – kontrollera internet.", qx, qy + 200); }
+    ctx.textAlign = "center";
+    font(800, 96); ctx.fillStyle = NAVY; ctx.fillText("Skanna med Swish", W / 2, qy + qrStorlek + 150);
+    font(400, 58); ctx.fillStyle = "#585a76";
+    ctx.fillText("1 stol = " + heltal(PRIS) + " kr  ·  2 stolar = " + heltal(2 * PRIS) + " kr  ·  5 stolar = " + heltal(5 * PRIS) + " kr", W / 2, qy + qrStorlek + 250);
+    ctx.fillText("Ändra beloppet i Swish om du vill ge fler stolar.", W / 2, qy + qrStorlek + 330);
+    var y2 = kort.y + kort.h + 190;
+    font(700, 76); ctx.fillStyle = INK; ctx.fillText("Eller swisha till " + NRV + " · meddelande: ”" + K.meddelande + "”", W / 2, y2);
+    font(600, 62); ctx.fillStyle = NAVY; ctx.fillText("Följ insamlingen live: " + K.lankText, W / 2, y2 + 120);
+    ctx.textAlign = "left";
+  }
+
+  /* ---------- Styrning ---------- */
+  function lage() {
+    return { stolar: Math.max(0, Math.floor(Number($("stolar").value) || 0)), idag: Math.max(0, Math.floor(Number($("idag").value) || 0)) };
+  }
+  function satttexter() { var t = TEXTER[val("mall")]; $("rubrik").value = t[0]; $("undertext").value = t[1]; }
+  function rita() {
+    var f = val("format"), mall = val("mall"), s = lage(), st = STORLEK[f];
+    duk.width = st[0]; duk.height = st[1];
+    var undertext = $("undertext").value;
+    if (mall === "progress" && s.idag === 0) undertext = undertext.replace(/^\+\{idag\} stolar idag – /, "");
+    var text = { rubrik: fyll($("rubrik").value, s), undertext: fyll(undertext, s) };
+    ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+    if (f === "affisch") affisch(st[0], st[1], s, mall, text);
+    else if (f === "lank") lank(st[0], st[1], s, mall, text);
+    else lodrat(st[0], st[1], s, mall, text);
+  }
+  function ladda() {
+    var namn = "stolar-" + val("format") + "-" + val("mall") + "-" + new Date().toISOString().slice(0, 10) + ".png";
+    duk.toBlob(function (blob) {
+      var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = namn;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+      $("status").textContent = "Sparade " + namn;
+    }, "image/png");
+  }
+
+  // Samma inläsning som på kampanjsidan (förenklad): summerar belopp och räknar dagens.
+  function hamta() {
+    if (!K.dataUrl) return;
+    $("status").textContent = "Hämtar siffror …";
+    fetch(K.dataUrl, { cache: "no-store" }).then(function (r) { return r.text(); }).then(function (t) {
+      var rader = t.split(/\r?\n/).map(function (r) { return r.match(/("([^"]|"")*"|[^,]*)(,|$)/g).map(function (c) { return c.replace(/,$/, "").replace(/^"|"$/g, "").replace(/""/g, '"'); }); });
+      var rub = rader.shift().map(function (h) { return h.toLowerCase(); });
+      var iD = rub.findIndex(function (h) { return /datum|tid|date|time/.test(h); });
+      var iB = rub.findIndex(function (h) { return /belopp|kronor|summa|amount|\bkr\b|sek/.test(h); });
+      var iS = rub.findIndex(function (h) { return /stol/.test(h); });
+      var idagStr = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Stockholm" }).format(new Date());
+      var total = 0, idagKr = 0;
+      rader.forEach(function (r) {
+        var raw = iB >= 0 ? r[iB] : r[iS]; if (raw == null) return;
+        var s = String(raw).replace(/kr|sek|:-/gi, "").replace(/[\s  ]/g, "");
+        if (/,\d{1,2}$/.test(s)) s = s.replace(/\./g, "").replace(",", "."); else s = s.replace(/[,]/g, "");
+        var n = parseFloat(s) || 0; if (iB < 0) n *= PRIS;
+        total += n;
+        if (iD >= 0 && String(r[iD] || "").slice(0, 10) === idagStr) idagKr += n;
+      });
+      var stolar = Math.max(0, Math.floor(total / PRIS));
+      $("stolar").value = stolar;
+      $("idag").value = Math.max(0, stolar - Math.max(0, Math.floor((total - idagKr) / PRIS)));
+      $("status").textContent = "Siffrorna hämtade.";
+      rita();
+    }).catch(function () { $("status").textContent = "Kunde inte hämta – skriv in siffrorna för hand."; });
+  }
+
+  document.querySelectorAll('input[name="mall"]').forEach(function (r) { r.addEventListener("change", function () { satttexter(); rita(); }); });
+  $("form").addEventListener("input", rita);
+  $("ladda").addEventListener("click", ladda);
+  if (K.dataUrl) { $("hamta").hidden = false; $("hamta").addEventListener("click", hamta); }
+
+  // Förval via adressen, t.ex. bildgenerator.html?format=inlagg&mall=lansering
+  var q = new URLSearchParams(location.search);
+  ["format", "mall"].forEach(function (k) { var v = q.get(k); var el = v && document.querySelector('input[name="' + k + '"][value="' + v + '"]'); if (el) el.checked = true; });
+  ["stolar", "idag"].forEach(function (k) { if (q.get(k) != null) $(k).value = q.get(k); });
+  satttexter();
+
+  var typsnitt = document.fonts ? Promise.all([800, 700, 600, 400].map(function (v) { return document.fonts.load(v + " 40px \"Open Sans\""); })) : Promise.resolve();
+  typsnitt.catch(function () {}).then(function () { rita(); document.body.setAttribute("data-klar", "1"); hamta(); });
+})();
+</script>
+</body>
+</html>
