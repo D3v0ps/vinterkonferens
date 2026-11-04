@@ -1,8 +1,9 @@
 // Demoläge: all data i webbläsarens localStorage, filer i IndexedDB.
 import { del, get, set } from 'idb-keyval'
-import type { DataAdapter, Filter, Query } from './db'
-import { emitChange, uuid } from './db'
+import type { DataAdapter, Query } from './db'
+import { applyQuery, emitChange, uuid } from './db'
 import { createDemoData, type DemoDb } from './demoData'
+import { safeStorage } from './platform'
 import type { KidsRegistration, TableName } from './types'
 
 const KEY = 'vk-demo-db-v1'
@@ -12,7 +13,7 @@ let db: DemoDb | null = null
 function load(): DemoDb {
   if (db) return db
   try {
-    const raw = localStorage.getItem(KEY)
+    const raw = safeStorage.get(KEY)
     if (raw) db = JSON.parse(raw) as DemoDb
   } catch {
     /* ignorera */
@@ -25,11 +26,7 @@ function load(): DemoDb {
 }
 
 function save() {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(db))
-  } catch (e) {
-    console.warn('Kunde inte spara demodata', e)
-  }
+  safeStorage.set(KEY, JSON.stringify(db))
 }
 
 export function resetDemoData() {
@@ -44,40 +41,8 @@ function rows(table: TableName): Record<string, unknown>[] {
   return d[table]
 }
 
-function match(row: Record<string, unknown>, f: Filter): boolean {
-  const v = row[f.col]
-  switch (f.op) {
-    case 'eq':
-      return v === f.value
-    case 'neq':
-      return v !== f.value
-    case 'gt':
-      return (v as string) > (f.value as string)
-    case 'gte':
-      return (v as string) >= (f.value as string)
-    case 'lt':
-      return (v as string) < (f.value as string)
-    case 'lte':
-      return (v as string) <= (f.value as string)
-    case 'in':
-      return (f.value as unknown[]).includes(v)
-    case 'is':
-      return v === f.value || (f.value === null && v === undefined)
-  }
-}
-
 function query(table: TableName, q?: Query) {
-  let out = rows(table).filter((r) => (q?.filters ?? []).every((f) => match(r, f)))
-  for (const o of [...(q?.order ?? [])].reverse()) {
-    out = [...out].sort((a, b) => {
-      const x = a[o.col] as string | number
-      const y = b[o.col] as string | number
-      const c = x === y ? 0 : x == null ? 1 : y == null ? -1 : x < y ? -1 : 1
-      return o.asc === false ? -c : c
-    })
-  }
-  if (q?.limit) out = out.slice(0, q.limit)
-  return out.map((r) => structuredClone(r))
+  return applyQuery(rows(table), q)
 }
 
 const delay = () => new Promise((r) => setTimeout(r, 60))

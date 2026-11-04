@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
+import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ComponentProps, type ReactNode } from 'react'
 import { Loader2, X } from 'lucide-react'
 import type { Lang, Localized } from '../lib/types'
 
@@ -6,13 +6,15 @@ export function cx(...c: (string | false | null | undefined)[]) {
   return c.filter(Boolean).join(' ')
 }
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'accent'
+// Accentfärgen (accent) används sparsamt: bara för sidans viktigaste handling.
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'danger-solid' | 'accent'
 const variants: Record<Variant, string> = {
-  primary: 'bg-ink text-white hover:bg-ink-soft shadow-sm',
-  accent: 'bg-accent text-white hover:brightness-110 shadow-sm',
-  secondary: 'bg-white text-ink border border-slate-300 hover:bg-slate-50',
+  primary: 'bg-ink text-white hover:bg-ink-soft',
+  accent: 'bg-accent text-white hover:bg-accent-strong',
+  secondary: 'bg-white text-ink border border-line hover:border-slate-400',
   ghost: 'text-ink hover:bg-slate-100',
   danger: 'bg-white text-rose-700 border border-rose-200 hover:bg-rose-50',
+  'danger-solid': 'bg-rose-700 text-white hover:bg-rose-800',
 }
 
 export function Button({
@@ -28,10 +30,10 @@ export function Button({
       {...rest}
       disabled={rest.disabled || loading}
       className={cx(
-        'inline-flex items-center justify-center gap-2 rounded-xl font-medium transition disabled:opacity-50 disabled:cursor-not-allowed',
-        size === 'sm' && 'px-3 py-1.5 text-sm',
-        size === 'md' && 'px-4 py-2.5 text-sm',
-        size === 'lg' && 'px-5 py-3.5 text-base',
+        'inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
+        size === 'sm' && 'min-h-9 px-3 py-1.5 text-[15px]',
+        size === 'md' && 'min-h-11 px-4 py-2.5 text-base',
+        size === 'lg' && 'min-h-13 px-6 py-3.5 text-lg',
         variants[variant],
         className,
       )}
@@ -53,27 +55,27 @@ export function Card({ className, children, ...rest }: { className?: string; chi
 export function Field({ label, hint, children, required, className }: { label: string; hint?: ReactNode; children: ReactNode; required?: boolean; className?: string }) {
   return (
     <label className={cx('block', className)}>
-      <span className="mb-1 block text-sm font-medium text-slate-700">
+      <span className="mb-1.5 block text-base font-medium text-slate-800">
         {label}
-        {required && <span className="text-rose-600"> *</span>}
+        {required && <span className="text-rose-700"> *</span>}
       </span>
       {children}
-      {hint && <span className="mt-1 block text-xs text-slate-500">{hint}</span>}
+      {hint && <span className="mt-1.5 block text-sm text-muted">{hint}</span>}
     </label>
   )
 }
 
 const inputCls = 'field'
 
-export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
+export function Input(props: ComponentProps<'input'>) {
   return <input {...props} className={cx(inputCls, props.className)} />
 }
 
-export function Textarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+export function Textarea(props: ComponentProps<'textarea'>) {
   return <textarea rows={3} {...props} className={cx(inputCls, props.className)} />
 }
 
-export function Select({ children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
+export function Select({ children, ...props }: ComponentProps<'select'>) {
   return (
     <select {...props} className={cx(inputCls, 'pe-8', props.className)}>
       {children}
@@ -83,7 +85,7 @@ export function Select({ children, ...props }: SelectHTMLAttributes<HTMLSelectEl
 
 export function Checkbox({ label, checked, onChange, className }: { label: ReactNode; checked: boolean; onChange: (v: boolean) => void; className?: string }) {
   return (
-    <label className={cx('flex cursor-pointer items-center gap-2.5 text-sm', className)}>
+    <label className={cx('flex min-h-11 cursor-pointer items-center gap-3 text-base', className)}>
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="size-5 rounded accent-ink" />
       <span>{label}</span>
     </label>
@@ -93,28 +95,28 @@ export function Checkbox({ label, checked, onChange, className }: { label: React
 export function Badge({ children, tone = 'slate', className }: { children: ReactNode; tone?: 'slate' | 'green' | 'amber' | 'red' | 'blue' | 'violet' | 'accent'; className?: string }) {
   const tones = {
     slate: 'bg-slate-100 text-slate-700',
-    green: 'bg-emerald-100 text-emerald-800',
-    amber: 'bg-amber-100 text-amber-800',
-    red: 'bg-rose-100 text-rose-800',
-    blue: 'bg-sky-100 text-sky-800',
-    violet: 'bg-violet-100 text-violet-800',
-    accent: 'bg-accent-soft text-accent',
+    green: 'bg-emerald-50 text-emerald-800',
+    amber: 'bg-amber-50 text-amber-900',
+    red: 'bg-rose-50 text-rose-800',
+    blue: 'bg-sky-50 text-sky-900',
+    violet: 'bg-violet-50 text-violet-800',
+    accent: 'bg-accent-soft text-accent-strong',
   }
-  return <span className={cx('inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold', tones[tone], className)}>{children}</span>
+  return <span className={cx('inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-sm font-medium', tones[tone], className)}>{children}</span>
 }
 
 export function Spinner({ label }: { label?: string }) {
   return (
     <div className="flex items-center justify-center gap-2 py-10 text-slate-500">
       <Loader2 className="size-5 animate-spin" aria-hidden />
-      {label && <span className="text-sm">{label}</span>}
+      {label && <span className="text-base">{label}</span>}
     </div>
   )
 }
 
 export function Empty({ children, icon }: { children: ReactNode; icon?: ReactNode }) {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white/60 px-6 py-10 text-center text-sm text-slate-500">
+    <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-line px-6 py-10 text-center text-base text-muted">
       {icon}
       {children}
     </div>
@@ -123,15 +125,15 @@ export function Empty({ children, icon }: { children: ReactNode; icon?: ReactNod
 
 export function ErrorText({ children }: { children: ReactNode }) {
   if (!children) return null
-  return <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">{children}</p>
+  return <p className="rounded-xl bg-rose-50 px-3 py-2 text-base text-rose-800" role="alert">{children}</p>
 }
 
 export function PageHeader({ title, subtitle, actions }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode }) {
   return (
-    <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-ink">{title}</h1>
-        {subtitle && <p className="mt-1 text-sm text-slate-600">{subtitle}</p>}
+    <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+      <div className="min-w-0">
+        <h1 className="text-3xl font-semibold tracking-tight text-ink text-balance">{title}</h1>
+        {subtitle && <p className="mt-1.5 max-w-[65ch] text-base text-muted">{subtitle}</p>}
       </div>
       {actions && <div className="no-print flex flex-wrap gap-2">{actions}</div>}
     </div>
@@ -152,15 +154,15 @@ export function Modal({ open, onClose, title, children, wide }: { open: boolean;
       onClose={onClose}
       onClick={(e) => e.target === ref.current && onClose()}
       className={cx(
-        'm-auto w-[calc(100%-1.5rem)] rounded-2xl bg-white p-0 shadow-2xl backdrop:bg-slate-900/50',
+        'm-auto w-[calc(100%-1.5rem)] rounded-2xl bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-ink/50',
         wide ? 'max-w-3xl' : 'max-w-lg',
       )}
     >
       {open && (
         <div className="max-h-[85dvh] overflow-y-auto">
-          <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-slate-100 bg-white px-5 py-4">
-            <h2 className="text-lg font-semibold text-ink">{title}</h2>
-            <button onClick={onClose} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100" aria-label="Stäng">
+          <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-line bg-white px-5 py-4">
+            <h2 className="text-xl font-semibold text-ink text-balance">{title}</h2>
+            <button type="button" onClick={onClose} className="grid size-11 place-items-center rounded-xl text-muted hover:bg-slate-100" aria-label="Stäng">
               <X className="size-5" />
             </button>
           </div>
@@ -181,8 +183,8 @@ export function Tabs<T extends string>({ value, onChange, options, className }: 
           aria-selected={value === o.value}
           onClick={() => onChange(o.value)}
           className={cx(
-            'shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition',
-            value === o.value ? 'bg-white text-ink shadow-sm' : 'text-slate-600 hover:text-ink',
+            'min-h-10 shrink-0 whitespace-nowrap rounded-lg px-3.5 py-2 text-base font-medium transition-colors',
+            value === o.value ? 'bg-white text-ink shadow-sm' : 'text-muted hover:text-ink',
           )}
         >
           {o.label}
@@ -215,9 +217,9 @@ export function LocalizedInput({
   return (
     <div>
       <div className="mb-1 flex items-center justify-between gap-2">
-        <span className="text-sm font-medium text-slate-700">
+        <span className="text-base font-medium text-slate-800">
           {label}
-          {required && <span className="text-rose-600"> *</span>}
+          {required && <span className="text-rose-700"> *</span>}
         </span>
         {langs.length > 1 && (
           <div className="flex gap-1">
@@ -227,12 +229,13 @@ export function LocalizedInput({
                 key={l}
                 onClick={() => setActive(l)}
                 className={cx(
-                  'rounded-md px-2 py-0.5 text-xs font-semibold uppercase',
-                  active === l ? 'bg-ink text-white' : value[l]?.trim() ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500',
+                  'min-h-8 rounded-md px-2.5 py-1 text-sm font-medium',
+                  active === l ? 'bg-ink text-white' : value[l]?.trim() ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-muted',
                 )}
                 title={LANG_NAMES[l]}
+                aria-pressed={active === l}
               >
-                {l}
+                {l === 'ar' ? 'عربي' : l === 'sv' ? 'Sv' : 'En'}
               </button>
             ))}
           </div>
@@ -253,9 +256,9 @@ export function LocalizedInput({
 export function StatTile({ label, value, sub }: { label: string; value: ReactNode; sub?: ReactNode }) {
   return (
     <Card className="p-4">
-      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</div>
-      <div className="mt-1 text-2xl font-bold text-ink tabular-nums">{value}</div>
-      {sub && <div className="mt-0.5 text-xs text-slate-500">{sub}</div>}
+      <div className="text-sm text-muted">{label}</div>
+      <div className="mt-1 text-3xl font-semibold text-ink tabular-nums">{value}</div>
+      {sub && <div className="mt-0.5 text-sm text-muted">{sub}</div>}
     </Card>
   )
 }

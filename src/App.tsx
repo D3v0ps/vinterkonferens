@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { Spinner } from './components/ui'
+import { DialogHost } from './components/dialogs'
 import ExternalLayout from './components/ExternalLayout'
 import InternalLayout from './components/InternalLayout'
 import Home from './pages/external/Home'
@@ -27,6 +28,7 @@ const SettingsPage = lazy(() => import('./pages/internal/Settings'))
 export default function App() {
   return (
     <Suspense fallback={<Spinner />}>
+      <DialogHost />
       <Routes>
         <Route element={<ExternalLayout />}>
           <Route index element={<Home />} />

@@ -32,12 +32,18 @@ export default function Login() {
     <div className="min-h-dvh">
       <DemoBar />
       <div className="mx-auto max-w-sm px-4 py-14">
-        <h1 className="text-center text-2xl font-bold text-ink">Volontärinloggning</h1>
-        <p className="mt-2 text-center text-sm text-slate-600">För kommittéer och volontärer på Vinterkonferensen.</p>
+        <h1 className="text-center text-3xl font-semibold text-ink">
+          Volontär<span className="font-display font-normal italic">inloggning</span>
+        </h1>
+        <p className="mt-2 text-center text-base text-muted">För kommittéer och volontärer på Vinterkonferensen.</p>
         <Card className="mt-6 p-5">
-          {isDemo ? (
+          {auth.managedSignIn ? (
+            <p className="text-base text-muted">
+              Öppna sidan inloggad på claude.ai med den e-post som din kommittéansvarig har registrerat. Då kommer du in automatiskt.
+            </p>
+          ) : isDemo ? (
             <div className="space-y-2">
-              <p className="text-sm text-slate-600">Demoläge – välj vem du vill testa som:</p>
+              <p className="text-base text-muted">Demoläge – välj vem du vill testa som:</p>
               {DEMO_PERSONAS.map((p) => (
                 <Button key={p.email} variant="secondary" className="w-full justify-start" onClick={() => auth.demoSignIn(p.email)}>
                   {p.label}
@@ -71,7 +77,7 @@ export default function Login() {
                 run(() => auth.verifyCode(email, code))
               }}
             >
-              <p className="text-sm text-slate-600">
+              <p className="text-base text-muted">
                 Vi har mejlat en kod till <b>{email}</b>. Skriv in den här – eller klicka på länken i mejlet.
               </p>
               <Field label="Kod">
@@ -81,14 +87,14 @@ export default function Login() {
               <Button type="submit" className="w-full" loading={busy}>
                 <KeyRound className="size-4" /> Logga in
               </Button>
-              <button type="button" className="w-full text-center text-sm text-slate-500 underline" onClick={() => setSent(false)}>
+              <button type="button" className="min-h-11 w-full text-center text-base text-muted underline" onClick={() => setSent(false)}>
                 Byt e-postadress
               </button>
             </form>
           )}
         </Card>
-        <p className="mt-6 text-center text-sm">
-          <Link to="/" className="text-slate-500 hover:text-ink">
+        <p className="mt-6 text-center">
+          <Link to="/" className="text-base text-muted hover:text-ink">
             ← Till besökarsidan
           </Link>
         </p>

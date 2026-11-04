@@ -1,3 +1,5 @@
+import { notify } from '../components/dialogs'
+import { saveFile } from './platform'
 import type { Lang, Localized } from './types'
 
 /** Plockar rätt språk ur ett flerspråkigt fält, med svenska som reserv. */
@@ -32,9 +34,10 @@ export function downloadCsv(filename: string, header: string[], rows: (string | 
   }
   const text = [header, ...rows].map((r) => r.map(esc).join(';')).join('\r\n')
   const blob = new Blob(['﻿' + text], { type: 'text/csv;charset=utf-8' })
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = filename
-  a.click()
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+  return saveFile(filename, blob, 'text/csv').then(
+    (saved) => {
+      if (saved) notify(`${filename} sparad`)
+    },
+    (e: Error) => notify(e.message, 'error'),
+  )
 }

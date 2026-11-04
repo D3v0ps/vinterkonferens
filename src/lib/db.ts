@@ -1,5 +1,6 @@
-// Ett tunt datalager med två implementationer:
+// Ett tunt datalager med tre implementationer:
 //  - Supabase (riktig backend, när VITE_SUPABASE_URL/ANON_KEY finns)
+//  - Artifact (Claude-artifactens delade databas, när appen byggs med VITE_TARGET=artifact)
 //  - Lokal demo (localStorage + IndexedDB) så att sidan går att prova direkt.
 import type { Row, TableName } from './types'
 
@@ -21,7 +22,7 @@ export const eq = (col: string, value: unknown): Filter => ({ col, op: 'eq', val
 export type Bucket = 'notes' | 'receipts'
 
 export interface DataAdapter {
-  mode: 'supabase' | 'demo'
+  mode: 'supabase' | 'demo' | 'artifact'
   list<T extends TableName>(table: T, q?: Query): Promise<Row<T>[]>
   get<T extends TableName>(table: T, id: string | number): Promise<Row<T> | null>
   /** returning=false används för anonyma inlägg (t.ex. betyg) som inte får läsas tillbaka. */
@@ -69,4 +70,42 @@ export function safeFileName(name: string): string {
     .replace(/-+/g, '-')
     .slice(0, 60)
   return `${base || 'fil'}${ext}`
+}
+
+// ---------- Filtrering och sortering i minnet (demo och artifact) ----------
+function matches(row: Record<string, unknown>, f: Filter): boolean {
+  const v = row[f.col]
+  switch (f.op) {
+    case 'eq':
+      return v === f.value
+    case 'neq':
+      return v !== f.value
+    case 'gt':
+      return (v as string) > (f.value as string)
+    case 'gte':
+      return (v as string) >= (f.value as string)
+    case 'lt':
+      return (v as string) < (f.value as string)
+    case 'lte':
+      return (v as string) <= (f.value as string)
+    case 'in':
+      return (f.value as unknown[]).includes(v)
+    case 'is':
+      return v === f.value || (f.value === null && v === undefined)
+  }
+}
+
+/** Kör en Query mot rader i minnet. Returnerar kopior. */
+export function applyQuery(rows: Record<string, unknown>[], q?: Query): Record<string, unknown>[] {
+  let out = rows.filter((r) => (q?.filters ?? []).every((f) => matches(r, f)))
+  for (const o of [...(q?.order ?? [])].reverse()) {
+    out = [...out].sort((a, b) => {
+      const x = a[o.col] as string | number
+      const y = b[o.col] as string | number
+      const c = x === y ? 0 : x == null ? 1 : y == null ? -1 : x < y ? -1 : 1
+      return o.asc === false ? -c : c
+    })
+  }
+  if (q?.limit) out = out.slice(0, q.limit)
+  return out.map((r) => structuredClone(r))
 }

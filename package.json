@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:artifact": "tsc -b && VITE_TARGET=artifact vite build --base ./ --outDir dist-artifact --emptyOutDir && node scripts/artifact-page.mjs dist-artifact"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.119.0",
