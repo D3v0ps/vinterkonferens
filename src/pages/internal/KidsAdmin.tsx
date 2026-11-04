@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import { AlertTriangle, Banknote, Download, LogIn, LogOut, Phone, Plus, Search, Trash2, UserPlus, XCircle } from 'lucide-react'
-import { Badge, Button, Card, Checkbox, Empty, ErrorText, Field, Input, Modal, PageHeader, Select, Spinner, StatTile, Textarea, cx } from '../../components/ui'
+import { confirmDialog, notify, promptDialog } from '../../components/dialogs'
+import { KeyFigures } from '../../components/stats/charts'
+import { Badge, Button, Card, Checkbox, Empty, ErrorText, Field, Input, Modal, PageHeader, Select, Spinner, Textarea, cx } from '../../components/ui'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { useConference } from '../../lib/conference'
@@ -16,6 +18,8 @@ const STATUS: Record<RegistrationStatus, { label: string; tone: 'slate' | 'green
   checked_out: { label: 'Hämtad', tone: 'slate' },
   cancelled: { label: 'Avbokad', tone: 'red' },
 }
+/** Lägen som får en egen etikett på kortet. Anmäld/Betald syns redan i betalningsetiketten. */
+const SHOWN_STATUS: RegistrationStatus[] = ['checked_in', 'checked_out', 'cancelled']
 
 const digits = (s: string) => s.replace(/\D/g, '')
 
@@ -32,7 +36,7 @@ function safeChildren(raw: unknown): Child[] {
   })
 }
 
-/** "1 500", "150 kr", "150:-", "99,50" → tal. null = tomt, undefined = ogiltigt. */
+/** "1 500", "150 kr", "150:-", "25,50 kr" → tal. null = tomt, undefined = ogiltigt. */
 function parseAmount(v: string): number | null | undefined {
   const t = v.replace(/\s|kr|:-/gi, '').replace(',', '.')
   if (!t) return null
@@ -77,20 +81,49 @@ export default function KidsAdmin() {
   }
 
   async function markPaid(r: KidsRegistration) {
-    const v = prompt(`Belopp som betalats för #${r.reg_number} (kr):`, r.amount != null ? String(r.amount) : '')
+    const v = await promptDialog({
+      title: `Markera #${r.reg_number} som betald`,
+      message: 'Skriv vad som betalades. Lämna tomt om du inte vet beloppet.',
+      label: 'Belopp (kr)',
+      defaultValue: r.amount != null ? String(r.amount).replace('.', ',') : '',
+      inputMode: 'decimal',
+      placeholder: 't.ex. 150',
+      confirmLabel: 'Markera betald',
+      validate: (x) => (parseAmount(x) === undefined ? 'Skriv beloppet i kronor, t.ex. 150, 1 500 eller 25,50.' : null),
+    })
     if (v === null) return
     const amount = parseAmount(v)
-    if (amount === undefined) return alert('Ogiltigt belopp – skriv t.ex. 150 eller 1 500.')
-    await api.update('kids_registrations', r.id, {
-      paid: true,
-      amount,
-      paid_at: now().toISOString(),
-      status: r.status === 'registered' ? 'paid' : r.status,
-    })
+    if (amount === undefined) return
+    try {
+      await api.update('kids_registrations', r.id, {
+        paid: true,
+        amount,
+        paid_at: now().toISOString(),
+        status: r.status === 'registered' ? 'paid' : r.status,
+      })
+      notify(`#${r.reg_number} är betald`)
+    } catch (e) {
+      notify((e as Error).message, 'error')
+    }
   }
 
-  const setStatusOf = (r: KidsRegistration, s: RegistrationStatus) =>
-    api.update('kids_registrations', r.id, { status: s, ...(s === 'checked_in' ? { checked_in_at: now().toISOString() } : {}) })
+  async function setStatusOf(r: KidsRegistration, s: RegistrationStatus) {
+    if (s === 'cancelled') {
+      const ok = await confirmDialog({
+        title: `Avboka #${r.reg_number}?`,
+        message: `Anmälan för ${r.guardian_name} markeras som avbokad. Den finns kvar i listan och i CSV-filen.`,
+        confirmLabel: 'Avboka',
+        cancelLabel: 'Behåll anmälan',
+        danger: true,
+      })
+      if (!ok) return
+    }
+    try {
+      await api.update('kids_registrations', r.id, { status: s, ...(s === 'checked_in' ? { checked_in_at: now().toISOString() } : {}) })
+    } catch (e) {
+      notify((e as Error).message, 'error')
+    }
+  }
 
   function exportCsv() {
     downloadCsv(
@@ -120,7 +153,7 @@ export default function KidsAdmin() {
     return (
       <div>
         <PageHeader title="Fritids & expresskassa" />
-        <p className="rounded-xl bg-sky-50 px-3 py-2 text-sm text-sky-800">Sidan används av Fritids, Gästbemötare och styrgruppen.</p>
+        <p className="text-base text-muted">Sidan används av Fritids, Gästbemötare och styrgruppen.</p>
       </div>
     )
 
@@ -131,33 +164,40 @@ export default function KidsAdmin() {
         subtitle="Sök på nummer, namn eller telefon. Nya anmälningar från besökarsidan dyker upp automatiskt."
         actions={
           <>
-            <Button variant="secondary" onClick={exportCsv}>
-              <Download className="size-4" /> CSV
+            <Button variant="secondary" onClick={exportCsv} disabled={!regs.length}>
+              <Download className="size-4" aria-hidden /> Ladda ner CSV
             </Button>
             <Button onClick={() => setNewOpen(true)}>
-              <UserPlus className="size-4" /> Ny anmälan på plats
+              <UserPlus className="size-4" aria-hidden /> Ny anmälan på plats
             </Button>
           </>
         }
       />
 
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatTile label="Anmälningar" value={totals.regs} />
-        <StatTile label="Barn totalt" value={totals.kids} />
-        <StatTile label="Betalda" value={totals.paid} sub={`av ${totals.regs}`} />
-        <StatTile label="Incheckade nu" value={totals.in} />
-      </div>
+      <KeyFigures
+        className="mb-6"
+        items={[
+          { label: 'Anmälningar', value: totals.regs },
+          { label: 'Barn totalt', value: totals.kids },
+          { label: 'Betalda', value: totals.paid, sub: `av ${totals.regs}` },
+          { label: 'Incheckade nu', value: totals.in },
+        ]}
+      />
 
-      <div className="mb-4 space-y-2">
+      <div className="mb-6 space-y-2">
+        <label htmlFor="kids-search" className="block text-base font-medium text-slate-800">
+          Sök anmälan
+        </label>
         <div className="relative">
-          <Search className="pointer-events-none absolute start-3.5 top-1/2 size-5 -translate-y-1/2 text-slate-400" />
+          <Search className="pointer-events-none absolute start-3.5 top-1/2 size-5 -translate-y-1/2 text-muted" aria-hidden />
           <Input
+            id="kids-search"
             autoFocus
             type="search"
             placeholder="#nummer, namn eller telefon"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            className="ps-11 py-3.5 text-lg sm:text-lg"
+            className="min-h-13 ps-11 text-lg"
           />
         </div>
         <div className="grid grid-cols-2 gap-2">
@@ -200,82 +240,87 @@ export default function KidsAdmin() {
 function RegCard({ r, onPaid, onStatus }: { r: KidsRegistration; onPaid: () => void; onStatus: (s: RegistrationStatus) => void }) {
   const st = STATUS[r.status]
   const cancelled = r.status === 'cancelled'
+  // En huvudhandling per kort: först betalning, sedan incheckning
+  const payFirst = !r.paid && r.status !== 'checked_in'
   return (
-    <Card className={cx('p-4', cancelled && 'opacity-60')}>
-      <div className="flex flex-wrap items-start gap-4">
-        <div className="text-4xl font-black tabular-nums text-ink">#{r.reg_number}</div>
+    <Card className={cx('p-4 sm:p-5', cancelled && 'opacity-60')}>
+      <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
+        <div className="text-4xl font-bold tabular-nums text-ink">#{r.reg_number}</div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-lg font-semibold">{r.guardian_name}</span>
-            <Badge tone={st.tone}>{st.label}</Badge>
-            <Badge tone={r.paid ? 'green' : 'amber'}>{r.paid ? `Betald${r.amount != null ? ` ${kr(r.amount)}` : ''}` : 'Ej betald'}</Badge>
+            <span className="text-lg font-semibold text-ink">{r.guardian_name}</span>
+            {SHOWN_STATUS.includes(r.status) && <Badge tone={st.tone}>{st.label}</Badge>}
+            {(r.paid || !cancelled) && <Badge tone={r.paid ? 'green' : 'amber'}>{r.paid ? `Betald${r.amount != null ? ` ${kr(r.amount)}` : ''}` : 'Ej betald'}</Badge>}
           </div>
-          <a href={`tel:${r.guardian_phone}`} className="mt-0.5 inline-flex items-center gap-1 text-sm text-slate-600 hover:text-ink">
-            <Phone className="size-3.5" /> {r.guardian_phone}
-          </a>
-          {r.guardian_email && <span className="ms-3 text-sm text-slate-500">{r.guardian_email}</span>}
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-3 text-base text-muted">
+            <span className="select-all tabular-nums text-ink">{r.guardian_phone}</span>
+            <a href={`tel:${r.guardian_phone.replace(/[^\d+]/g, '')}`} className="inline-flex min-h-11 items-center gap-1.5 text-ink underline underline-offset-4 hover:text-ink-soft">
+              <Phone className="size-4" aria-hidden /> Ring
+            </a>
+            {r.guardian_email && <span className="select-all break-all">{r.guardian_email}</span>}
+          </div>
         </div>
       </div>
 
       <ul className="mt-3 space-y-1.5">
         {r.children.map((c, i) => (
-          <li key={i} className="flex flex-wrap items-center gap-2 text-sm">
-            <span className="font-medium">{c.name}</span>
-            {c.age != null && <span className="text-slate-500">{c.age} år</span>}
+          <li key={i} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-base">
+            <span className="font-medium text-ink">{c.name}</span>
+            {c.age != null && <span className="text-muted">{c.age} år</span>}
             {c.allergies?.trim() && (
-              <span className="inline-flex items-center gap-1 rounded-lg bg-rose-100 px-2 py-0.5 font-semibold text-rose-800">
-                <AlertTriangle className="size-3.5" /> {c.allergies}
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-rose-50 px-2 py-0.5 font-semibold text-rose-800">
+                <AlertTriangle className="size-4" aria-hidden /> {c.allergies}
               </span>
             )}
           </li>
         ))}
       </ul>
 
-      <dl className="mt-3 grid gap-x-4 gap-y-1 text-sm text-slate-600 sm:grid-cols-2">
+      <dl className="mt-3 grid gap-x-6 gap-y-1 text-base sm:grid-cols-2">
         <div>
-          <dt className="inline font-medium text-slate-700">Dagar: </dt>
+          <dt className="inline text-muted">Dagar: </dt>
           <dd className="inline">{r.days.map((d) => weekdayShort(d)).join(', ') || '–'}</dd>
         </div>
         <div>
-          <dt className="inline font-medium text-slate-700">Får hämta: </dt>
+          <dt className="inline text-muted">Får hämta: </dt>
           <dd className="inline">{r.pickup_names || '–'}</dd>
         </div>
         <div>
-          <dt className="inline font-medium text-slate-700">Bilder: </dt>
-          <dd className={cx('inline', !r.photo_consent && 'font-semibold text-rose-700')}>{r.photo_consent ? 'OK att fotografera' : 'Får INTE synas på bild'}</dd>
+          <dt className="inline text-muted">Bilder: </dt>
+          <dd className={cx('inline', !r.photo_consent && 'font-semibold text-rose-700')}>{r.photo_consent ? 'OK att fotografera' : 'Får inte synas på bild'}</dd>
         </div>
         {r.checked_in_at && (
           <div>
-            <dt className="inline font-medium text-slate-700">Incheckad: </dt>
+            <dt className="inline text-muted">Incheckad: </dt>
             <dd className="inline">{formatDateTime(r.checked_in_at)}</dd>
           </div>
         )}
         {r.notes && (
           <div className="sm:col-span-2">
-            <dt className="inline font-medium text-slate-700">Övrigt: </dt>
+            <dt className="inline text-muted">Övrigt: </dt>
             <dd className="inline">{r.notes}</dd>
           </div>
         )}
       </dl>
 
       {!cancelled && (
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-4">
           {!r.paid && (
-            <Button variant="accent" onClick={onPaid}>
-              <Banknote className="size-4" /> Markera betald
+            <Button variant={payFirst ? 'primary' : 'secondary'} onClick={onPaid}>
+              <Banknote className="size-4" aria-hidden /> Markera betald
             </Button>
           )}
           {r.status !== 'checked_in' ? (
-            <Button onClick={() => onStatus('checked_in')}>
-              <LogIn className="size-4" /> Checka in
+            <Button variant={payFirst ? 'secondary' : 'primary'} onClick={() => onStatus('checked_in')}>
+              <LogIn className="size-4" aria-hidden /> Checka in
             </Button>
           ) : (
             <Button variant="secondary" onClick={() => onStatus('checked_out')}>
-              <LogOut className="size-4" /> Checka ut
+              <LogOut className="size-4" aria-hidden /> Checka ut
             </Button>
           )}
-          <Button variant="danger" onClick={() => confirm(`Avboka #${r.reg_number}?`) && onStatus('cancelled')}>
-            <XCircle className="size-4" /> Avboka
+          <Button variant="ghost" className="ms-auto text-rose-700" onClick={() => onStatus('cancelled')}>
+            <XCircle className="size-4" aria-hidden /> Avboka
           </Button>
         </div>
       )}
@@ -319,7 +364,13 @@ function NewRegistration({ open, onClose }: { open: boolean; onClose: () => void
 
   async function submit() {
     const kids = children.filter((c) => c.name.trim())
-    if (!guardian.trim() || !phone.trim() || !kids.length || !chosenDays.length) return setErr('Fyll i namn, telefon, minst ett barn och dag.')
+    const missing = [
+      !guardian.trim() && 'vårdnadshavarens namn',
+      !phone.trim() && 'mobilnummer',
+      !kids.length && 'minst ett barns namn',
+      !chosenDays.length && 'minst en dag',
+    ].filter(Boolean)
+    if (missing.length) return setErr(`Fyll i ${missing.join(', ').replace(/, ([^,]*)$/, ' och $1')}.`)
     setBusy(true)
     setErr(null)
     try {
@@ -350,11 +401,12 @@ function NewRegistration({ open, onClose }: { open: boolean; onClose: () => void
     <Modal open={open} onClose={close} title="Ny anmälan på plats">
       {number != null ? (
         <div className="py-4 text-center">
-          <p className="text-sm text-slate-600">Anmälan är klar. Nummer:</p>
-          <p className="my-3 text-6xl font-black tabular-nums text-ink">#{number}</p>
+          <p className="text-base text-muted">Anmälan är klar. Nummer:</p>
+          <p className="my-3 text-6xl font-bold tabular-nums text-ink">#{number}</p>
+          <p className="mb-5 text-base text-muted">Säg numret till vårdnadshavaren – det används vid betalning och hämtning.</p>
           <div className="flex justify-center gap-2">
             <Button variant="secondary" onClick={reset}>
-              <Plus className="size-4" /> Ny till
+              <Plus className="size-4" aria-hidden /> Ny anmälan till
             </Button>
             <Button onClick={close}>Klar</Button>
           </div>
@@ -367,46 +419,57 @@ function NewRegistration({ open, onClose }: { open: boolean; onClose: () => void
             submit()
           }}
         >
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Vårdnadshavare" required>
-              <Input value={guardian} onChange={(e) => setGuardian(e.target.value)} />
+              <Input autoComplete="off" value={guardian} onChange={(e) => setGuardian(e.target.value)} />
             </Field>
             <Field label="Mobilnummer" required>
-              <Input type="tel" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+              <Input type="tel" inputMode="tel" autoComplete="off" value={phone} onChange={(e) => setPhone(e.target.value)} />
             </Field>
           </div>
-          <div className="space-y-2">
-            <span className="block text-sm font-medium text-slate-700">Barn *</span>
+          <div className="space-y-4">
             {children.map((c, i) => (
-              <div key={i} className="grid grid-cols-[1fr_4.5rem_auto] gap-2">
-                <Input placeholder="Namn" value={c.name} onChange={(e) => setChild(i, { name: e.target.value })} />
-                <Input
-                  placeholder="Ålder"
-                  type="number"
-                  min={0}
-                  inputMode="numeric"
-                  value={c.age ?? ''}
-                  onChange={(e) => setChild(i, { age: e.target.value ? Number(e.target.value) : null })}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  aria-label="Ta bort barn"
-                  disabled={children.length === 1}
-                  onClick={() => setChildren((cs) => cs.filter((_, j) => j !== i))}
-                >
-                  <Trash2 className="size-4" />
-                </Button>
-                <Input className="col-span-3" placeholder="Allergier / specialkost" value={c.allergies} onChange={(e) => setChild(i, { allergies: e.target.value })} />
-              </div>
+              <fieldset key={i} className="min-w-0 space-y-3 border-t border-line pt-4">
+                <legend className="sr-only">{children.length > 1 ? `Barn ${i + 1}` : 'Barn'}</legend>
+                <div className="flex min-h-11 items-center justify-between gap-2">
+                  <span className="text-base font-semibold text-ink" aria-hidden>
+                    {children.length > 1 ? `Barn ${i + 1}` : 'Barn'}
+                    {i === 0 && <span className="text-rose-700"> *</span>}
+                  </span>
+                  {children.length > 1 && (
+                    <Button type="button" variant="ghost" className="text-rose-700" onClick={() => setChildren((cs) => cs.filter((_, j) => j !== i))}>
+                      <Trash2 className="size-4" aria-hidden /> Ta bort barn {i + 1}
+                    </Button>
+                  )}
+                </div>
+                <div className="grid grid-cols-[1fr_6rem] gap-3">
+                  <Field label="Namn">
+                    <Input autoComplete="off" value={c.name} onChange={(e) => setChild(i, { name: e.target.value })} />
+                  </Field>
+                  <Field label="Ålder">
+                    <Input
+                      type="number"
+                      min={0}
+                      inputMode="numeric"
+                      value={c.age ?? ''}
+                      onChange={(e) => setChild(i, { age: e.target.value ? Number(e.target.value) : null })}
+                    />
+                  </Field>
+                </div>
+                <Field label="Allergier eller specialkost" hint="Lämna tomt om det inte finns några.">
+                  <Input value={c.allergies} onChange={(e) => setChild(i, { allergies: e.target.value })} />
+                </Field>
+              </fieldset>
             ))}
-            <Button type="button" size="sm" variant="secondary" onClick={() => setChildren((cs) => [...cs, emptyChild()])}>
-              <Plus className="size-4" /> Lägg till barn
+            <Button type="button" variant="secondary" onClick={() => setChildren((cs) => [...cs, emptyChild()])}>
+              <Plus className="size-4" aria-hidden /> Lägg till barn
             </Button>
           </div>
-          <div>
-            <span className="mb-1 block text-sm font-medium text-slate-700">Dagar *</span>
-            <div className="flex flex-wrap gap-4">
+          <fieldset className="min-w-0">
+            <legend className="mb-1 block w-full border-t border-line pt-4 text-base font-semibold text-ink">
+              Dagar<span className="text-rose-700"> *</span>
+            </legend>
+            <div className="flex flex-wrap gap-x-6">
               {days.map((d) => (
                 <Checkbox
                   key={d.id}
@@ -416,8 +479,8 @@ function NewRegistration({ open, onClose }: { open: boolean; onClose: () => void
                 />
               ))}
             </div>
-          </div>
-          <Field label="Får hämta barnet">
+          </fieldset>
+          <Field label="Får hämta barnet" hint="Namn på andra vuxna som får hämta.">
             <Input value={pickup} onChange={(e) => setPickup(e.target.value)} />
           </Field>
           <Field label="Övrigt">
@@ -425,7 +488,7 @@ function NewRegistration({ open, onClose }: { open: boolean; onClose: () => void
           </Field>
           <Checkbox label="OK att barnet syns på bild" checked={photo} onChange={setPhoto} />
           <ErrorText>{err}</ErrorText>
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-2 border-t border-line pt-4">
             <Button type="button" variant="secondary" onClick={close}>
               Avbryt
             </Button>

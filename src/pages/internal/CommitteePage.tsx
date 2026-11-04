@@ -1,14 +1,16 @@
-import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, CalendarPlus, ClipboardPaste, Copy, MapPin, Megaphone, Pencil, Plus, Printer, Search, Trash2, UserPlus } from 'lucide-react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
+import { ArrowLeft, CalendarPlus, ClipboardPaste, Copy, Download, Megaphone, Pencil, Plus, Printer, Search, Trash2, UserPlus } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { useConference } from '../../lib/conference'
 import { eq } from '../../lib/db'
 import { useList, useNow } from '../../lib/hooks'
-import { formatDay } from '../../lib/time'
+import { canPrint, isArtifact, saveFile } from '../../lib/platform'
+import { formatDateTime, formatDay } from '../../lib/time'
 import type { Committee, Post, Shift, Volunteer } from '../../lib/types'
-import { Badge, Button, Card, Checkbox, Empty, ErrorText, Field, Input, Modal, PageHeader, Spinner, Tabs, Textarea, cx } from '../../components/ui'
+import { confirmDialog, notify } from '../../components/dialogs'
+import { Badge, Button, Checkbox, Empty, ErrorText, Field, Input, Modal, PageHeader, Spinner, Tabs, Textarea, cx } from '../../components/ui'
 import { ShiftEditor, byStart, shiftState, timeRange } from '../../components/internal-core/shifts'
 import { PostCard, PostEditor } from './Posts'
 
@@ -33,20 +35,20 @@ export default function CommitteePage() {
 
   return (
     <div>
-      <Link to="/intern/kommitteer" className="no-print mb-3 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-ink">
-        <ArrowLeft className="size-4" /> Alla kommittéer
+      <Link to="/intern/kommitteer" className="no-print mb-2 inline-flex min-h-11 items-center gap-1.5 text-base text-muted hover:text-ink">
+        <ArrowLeft className="size-4 rtl:rotate-180" aria-hidden /> Alla kommittéer
       </Link>
       <PageHeader
         title={
-          <span className="flex items-center gap-2.5">
-            <span className="size-3.5 rounded-full" style={{ background: committee.color }} />
+          <span className="flex items-center gap-3">
+            <span className="size-3.5 shrink-0 rounded-full" style={{ background: committee.color }} aria-hidden />
             {committee.name}
           </span>
         }
         subtitle={committee.description || undefined}
       />
       <Tabs
-        className="mb-5"
+        className="mb-6"
         value={tab}
         onChange={setTab}
         options={[
@@ -66,7 +68,7 @@ export default function CommitteePage() {
 
 function ScheduleTab({ committee }: { committee: Committee }) {
   const auth = useAuth()
-  const { days, today, currentDay } = useConference()
+  const { days, today, currentDay, settings } = useConference()
   const at = useNow(60_000)
   const shifts = useList('shifts', { filters: [eq('committee_id', committee.id)] })
   const volunteers = useList('volunteers', { filters: [eq('committee_id', committee.id)], order: [{ col: 'full_name' }] })
@@ -86,6 +88,7 @@ function ScheduleTab({ committee }: { committee: Committee }) {
   const [q, setQ] = useState('')
   const [editing, setEditing] = useState<Partial<Shift> | null>(null)
   const [open, setOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
 
   const query = q.trim().toLowerCase()
   const isMatch = (v: Volunteer) => !!query && v.full_name.toLowerCase().includes(query)
@@ -97,24 +100,46 @@ function ScheduleTab({ committee }: { committee: Committee }) {
     setOpen(true)
   }
 
+  async function removeShift(s: Shift) {
+    const ok = await confirmDialog({ title: `Ta bort passet ${s.title}?`, message: `${timeRange(s)} försvinner ur schemat för alla.`, confirmLabel: 'Ta bort', danger: true })
+    if (!ok) return
+    try {
+      await api.remove('shifts', s.id)
+    } catch (e) {
+      notify((e as Error).message, 'error')
+    }
+  }
+
+  async function downloadSchedule() {
+    setSaving(true)
+    try {
+      const html = scheduleHtml({ conference: settings.conference_name, committee, date, shifts: dayShifts, volunteers: volunteers.data })
+      const saved = await saveFile(`schema-${committee.slug}-${date}.html`, html, 'text/html')
+      if (saved) notify('Schemat är sparat. Öppna filen för att läsa eller skriva ut det.')
+    } catch (e) {
+      notify((e as Error).message, 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   if (shifts.loading || volunteers.loading) return <Spinner />
 
-  const chip = (v: Volunteer) => (
-    <span
-      key={v.id}
-      className={cx(
-        'rounded-full px-2.5 py-1 text-xs font-medium',
-        mine.has(v.id) ? 'bg-accent text-white' : isMatch(v) ? 'bg-amber-200 text-amber-950 ring-2 ring-amber-400' : 'bg-slate-100 text-slate-700',
-      )}
-    >
-      {v.full_name}
-      {v.is_lead && ' ★'}
-    </span>
-  )
+  // Rad med de bemannade: du i fetstil, sökträffar markerade
+  const names = (people: Volunteer[]) =>
+    people.map((v, i) => (
+      <Fragment key={v.id}>
+        {i > 0 && ', '}
+        <NameText v={v} me={mine.has(v.id)} match={isMatch(v)} />
+      </Fragment>
+    ))
+
+  const rowTint = (match: boolean, me: boolean) => (match ? '-mx-3 bg-amber-50 px-3' : me ? '-mx-3 bg-ice px-3' : '')
+  const personList = volunteers.data.filter((v) => !query || isMatch(v))
 
   return (
     <div>
-      <div className="no-print mb-4 flex flex-wrap items-center gap-2">
+      <div className="no-print space-y-3">
         {dates.length > 0 && (
           <Tabs
             value={date}
@@ -122,32 +147,47 @@ function ScheduleTab({ committee }: { committee: Committee }) {
             options={dates.map((d) => ({ value: d, label: <span className="inline-block first-letter:uppercase">{formatDay(d, 'sv', { weekday: 'short', day: 'numeric', month: 'short' })}</span> }))}
           />
         )}
-        <Tabs
-          value={view}
-          onChange={setView}
-          options={[
-            { value: 'pass', label: 'Per pass' },
-            { value: 'person', label: 'Per person' },
-          ]}
-        />
-        <div className="relative min-w-48 flex-1">
-          <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Sök ditt namn …" className="ps-9" />
+        <div className="flex flex-wrap items-center gap-3">
+          <Tabs
+            value={view}
+            onChange={setView}
+            options={[
+              { value: 'pass', label: 'Per pass' },
+              { value: 'person', label: 'Per person' },
+            ]}
+          />
+          <label className="relative min-w-48 flex-1">
+            <span className="sr-only">Sök namn</span>
+            <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" aria-hidden />
+            <Input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Sök ditt namn" className="ps-9" />
+          </label>
         </div>
-        <Button variant="secondary" onClick={() => window.print()}>
-          <Printer className="size-4" /> Skriv ut
-        </Button>
-        {canEdit && (
-          <Button onClick={() => edit({ date })} disabled={!date}>
-            <CalendarPlus className="size-4" /> Nytt pass
-          </Button>
-        )}
       </div>
 
-      <h2 className="mb-3 hidden text-xl font-bold print:block">
-        {committee.name} – <span className="inline-block first-letter:uppercase">{date && formatDay(date)}</span>
-      </h2>
-      {date && <p className="no-print mb-3 text-sm font-medium first-letter:uppercase text-slate-600">{formatDay(date)}</p>}
+      {date && (
+        <div className="mt-6 mb-2 flex flex-wrap items-end justify-between gap-3">
+          <h2 className="text-xl font-semibold text-ink">
+            <span className="hidden print:inline">{committee.name} – </span>
+            <span className="inline-block first-letter:uppercase">{formatDay(date)}</span>
+          </h2>
+          <div className="no-print flex flex-wrap gap-2">
+            {canPrint ? (
+              <Button variant="secondary" onClick={() => window.print()}>
+                <Printer className="size-4" /> Skriv ut
+              </Button>
+            ) : (
+              <Button variant="secondary" onClick={downloadSchedule} loading={saving}>
+                <Download className="size-4" /> Ladda ner schema
+              </Button>
+            )}
+            {canEdit && (
+              <Button onClick={() => edit({ date })}>
+                <CalendarPlus className="size-4" /> Nytt pass
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
 
       {dates.length === 0 ? (
         <Empty>Inga konferensdagar är inlagda ännu (Inställningar).</Empty>
@@ -155,78 +195,65 @@ function ScheduleTab({ committee }: { committee: Committee }) {
         dayShifts.length === 0 ? (
           <Empty>Inga pass den här dagen.</Empty>
         ) : (
-          <div className="space-y-3">
+          <ul className="divide-y divide-line border-y border-line">
             {dayShifts.map((s) => {
               const people = s.volunteer_ids.map((id) => vById.get(id)).filter((v): v is Volunteer => !!v)
               const state = shiftState(s, at)
               const hasMe = people.some((v) => mine.has(v.id))
               return (
-                <Card key={s.id} className={cx('print-break p-4', hasMe && 'border-accent/60 ring-1 ring-accent/30', state === 'done' && 'opacity-60')}>
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-sm font-semibold tabular-nums text-ink">{timeRange(s)}</span>
-                        <h3 className="font-semibold text-ink">{s.title}</h3>
-                        {state === 'ongoing' && <Badge tone="green">Pågår</Badge>}
-                        {hasMe && <Badge tone="accent">Du</Badge>}
-                      </div>
-                      {s.location && (
-                        <p className="mt-0.5 inline-flex items-center gap-1 text-sm text-slate-600">
-                          <MapPin className="size-3.5" /> {s.location}
-                        </p>
-                      )}
-                      {s.notes && <p className="mt-1 whitespace-pre-line text-sm text-slate-600">{s.notes}</p>}
+                <li key={s.id} className={cx('print-break flex items-start gap-3 py-4', rowTint(false, hasMe), state === 'done' && 'opacity-60')}>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className={cx('text-base font-semibold tabular-nums', state === 'ongoing' ? 'text-accent-strong' : 'text-ink')}>{timeRange(s)}</span>
+                      <h3 className="text-base font-semibold text-ink">{s.title}</h3>
+                      {state === 'ongoing' && <Badge tone="accent">Pågår nu</Badge>}
                     </div>
-                    {canEdit && (
-                      <div className="no-print flex gap-1">
-                        <IconBtn label="Redigera" onClick={() => edit(s)} icon={<Pencil className="size-4" />} />
-                        <IconBtn label="Duplicera" onClick={() => edit({ ...s, id: undefined })} icon={<Copy className="size-4" />} />
-                        <IconBtn
-                          label="Ta bort"
-                          danger
-                          onClick={() => confirm(`Ta bort passet "${s.title}"?`) && api.remove('shifts', s.id)}
-                          icon={<Trash2 className="size-4" />}
-                        />
-                      </div>
-                    )}
+                    {s.location && <p className="mt-0.5 text-base text-muted">{s.location}</p>}
+                    {s.notes && <p className="mt-1 whitespace-pre-line text-base text-slate-700">{s.notes}</p>}
+                    <p className="mt-2 text-base text-slate-800">{people.length ? names(people) : <span className="text-muted">Ingen bemanning ännu</span>}</p>
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {people.length ? people.map(chip) : <span className="text-sm text-slate-400">Ingen bemanning ännu</span>}
-                  </div>
-                </Card>
+                  {canEdit && (
+                    <div className="no-print -me-2 flex shrink-0">
+                      <IconBtn label={`Redigera ${s.title}`} onClick={() => edit(s)} icon={<Pencil className="size-4" />} />
+                      <IconBtn label={`Duplicera ${s.title}`} onClick={() => edit({ ...s, id: undefined })} icon={<Copy className="size-4" />} />
+                      <IconBtn label={`Ta bort ${s.title}`} danger onClick={() => removeShift(s)} icon={<Trash2 className="size-4" />} />
+                    </div>
+                  )}
+                </li>
               )
             })}
-          </div>
+          </ul>
         )
+      ) : volunteers.data.length === 0 ? (
+        <Empty>Inga volontärer ännu.</Empty>
       ) : (
-        <Card className="divide-y divide-slate-100">
-          {volunteers.data
-            .filter((v) => !query || isMatch(v))
-            .map((v) => {
-              const own = dayShifts.filter((s) => s.volunteer_ids.includes(v.id))
-              return (
-                <div key={v.id} className={cx('print-break flex flex-wrap items-start gap-x-4 gap-y-1 px-4 py-3', mine.has(v.id) && 'bg-accent-soft', isMatch(v) && 'bg-amber-50')}>
-                  <div className="w-44 shrink-0 font-medium text-ink">
-                    {v.full_name}
-                    {v.is_lead && <span className="text-slate-400"> ★</span>}
-                  </div>
-                  <div className="flex-1 space-y-0.5 text-sm">
-                    {own.length ? (
-                      own.map((s) => (
-                        <div key={s.id}>
-                          <span className="font-mono tabular-nums text-slate-900">{timeRange(s)}</span> <span className="text-slate-700">{s.title}</span>
-                          {s.location && <span className="text-slate-500"> · {s.location}</span>}
-                        </div>
-                      ))
-                    ) : (
-                      <span className="text-slate-400">Ledig</span>
-                    )}
-                  </div>
+        <ul className="divide-y divide-line border-y border-line">
+          {personList.map((v) => {
+            const own = dayShifts.filter((s) => s.volunteer_ids.includes(v.id))
+            return (
+              <li key={v.id} className={cx('print-break flex flex-wrap items-start gap-x-4 gap-y-1 py-3', rowTint(isMatch(v), mine.has(v.id)))}>
+                <div className="w-44 shrink-0 text-base font-medium text-ink">
+                  {v.full_name}
+                  {mine.has(v.id) && ' (du)'}
+                  {v.is_lead && <LeadMark />}
                 </div>
-              )
-            })}
-          {volunteers.data.length === 0 && <p className="p-4 text-sm text-slate-500">Inga volontärer ännu.</p>}
-        </Card>
+                <div className="min-w-0 flex-1 space-y-0.5 text-base">
+                  {own.length ? (
+                    own.map((s) => (
+                      <div key={s.id}>
+                        <span className="font-semibold tabular-nums text-ink">{timeRange(s)}</span> <span className="text-slate-800">{s.title}</span>
+                        {s.location && <span className="text-muted"> · {s.location}</span>}
+                      </div>
+                    ))
+                  ) : (
+                    <span className="text-muted">Ledig</span>
+                  )}
+                </div>
+              </li>
+            )
+          })}
+          {personList.length === 0 && <li className="py-3 text-base text-muted">Ingen volontär heter så i {committee.name}.</li>}
+        </ul>
       )}
 
       {canEdit && (
@@ -244,50 +271,185 @@ function ScheduleTab({ committee }: { committee: Committee }) {
   )
 }
 
+function LeadMark() {
+  return (
+    <>
+      <span className="text-slate-400" aria-hidden title="Kommittéansvarig">
+        {' '}
+        ★
+      </span>
+      <span className="sr-only"> (ansvarig)</span>
+    </>
+  )
+}
+
+function NameText({ v, me, match }: { v: Volunteer; me: boolean; match: boolean }) {
+  const label = (
+    <>
+      {v.full_name}
+      {me && ' (du)'}
+      {v.is_lead && <LeadMark />}
+    </>
+  )
+  if (match) return <mark className="rounded bg-amber-200 px-0.5 text-amber-950">{label}</mark>
+  return <span className={cx('break-words', me && 'font-semibold text-ink')}>{label}</span>
+}
+
 function IconBtn({ label, onClick, icon, danger }: { label: string; onClick: () => void; icon: React.ReactNode; danger?: boolean }) {
   return (
     <button
+      type="button"
       aria-label={label}
       title={label}
       onClick={onClick}
-      className={cx('rounded-lg p-2', danger ? 'text-rose-600 hover:bg-rose-50' : 'text-slate-500 hover:bg-slate-100')}
+      className={cx('grid size-11 place-items-center rounded-xl', danger ? 'text-rose-700 hover:bg-rose-50' : 'text-muted hover:bg-slate-100 hover:text-ink')}
     >
       {icon}
     </button>
   )
 }
 
+// ---------------- Schema som fil ----------------
+// I artifacten går det inte att skriva ut, så schemat sparas som en fristående
+// HTML-fil som går att läsa i telefonen och skriva ut från webbläsaren.
+
+const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
+
+function scheduleHtml({ conference, committee, date, shifts, volunteers }: { conference: string; committee: Committee; date: string; shifts: Shift[]; volunteers: Volunteer[] }): string {
+  const day = formatDay(date)
+  const dayCap = day.charAt(0).toUpperCase() + day.slice(1)
+  const vById = new Map(volunteers.map((v) => [v.id, v]))
+  const lead = (v: Volunteer) => (v.is_lead ? ' <span class="muted">(ansvarig)</span>' : '')
+
+  const personRows = volunteers
+    .map((v) => {
+      const own = shifts.filter((s) => s.volunteer_ids.includes(v.id))
+      const cell = own.length
+        ? own.map((s) => `<div><span class="time">${esc(timeRange(s))}</span> ${esc(s.title)}${s.location ? ` <span class="muted">· ${esc(s.location)}</span>` : ''}</div>`).join('')
+        : '<span class="muted">Ledig</span>'
+      return `<tr><th scope="row">${esc(v.full_name)}${lead(v)}</th><td>${cell}</td></tr>`
+    })
+    .join('\n')
+
+  const passItems = shifts
+    .map((s) => {
+      const people = s.volunteer_ids.map((id) => vById.get(id)).filter((v): v is Volunteer => !!v)
+      return `<section class="pass">
+  <h3><span class="time">${esc(timeRange(s))}</span> ${esc(s.title)}</h3>
+  ${s.location ? `<p class="muted">${esc(s.location)}</p>` : ''}
+  ${s.notes ? `<p class="notes">${esc(s.notes)}</p>` : ''}
+  <p>${people.length ? people.map((v) => esc(v.full_name) + lead(v)).join(', ') : '<span class="muted">Ingen bemanning ännu</span>'}</p>
+</section>`
+    })
+    .join('\n')
+
+  return `<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Schema – ${esc(committee.name)} – ${esc(day)}</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin: 0 auto; max-width: 48rem; padding: 24px 16px 48px; background: #fff; color: #18233a;
+    font-family: "Instrument Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-size: 16px; line-height: 1.5; }
+  h1 { margin: 2px 0 0; font-size: 28px; line-height: 1.2; color: #0e2240; }
+  h2 { margin: 32px 0 8px; font-size: 20px; color: #0e2240; }
+  h3 { margin: 0; font-size: 16px; }
+  p { margin: 2px 0 0; }
+  .muted { color: #55627a; }
+  .day { font-size: 18px; }
+  .time { font-weight: 600; font-variant-numeric: tabular-nums; margin-right: 4px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 8px 12px 8px 0; border-top: 1px solid #dfe5ec; text-align: left; vertical-align: top; }
+  th { width: 38%; font-weight: 600; }
+  tr { break-inside: avoid; }
+  tbody tr:last-child th, tbody tr:last-child td { border-bottom: 1px solid #dfe5ec; }
+  .pass { padding: 10px 0; border-top: 1px solid #dfe5ec; break-inside: avoid; }
+  .pass:last-of-type { border-bottom: 1px solid #dfe5ec; }
+  .notes { white-space: pre-line; }
+  footer { margin-top: 32px; font-size: 14px; }
+  @media print {
+    @page { margin: 15mm; }
+    body { max-width: none; padding: 0; }
+    .page-break { break-before: page; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <p class="muted">${esc(conference)}</p>
+  <h1>${esc(committee.name)}</h1>
+  <p class="day">${esc(dayCap)}</p>
+</header>
+
+<h2>Per person</h2>
+${volunteers.length ? `<table><tbody>\n${personRows}\n</tbody></table>` : '<p class="muted">Inga volontärer ännu.</p>'}
+
+<h2 class="page-break">Per pass</h2>
+${shifts.length ? passItems : '<p class="muted">Inga pass den här dagen.</p>'}
+
+<footer class="muted">Sparat ${esc(formatDateTime(new Date().toISOString()))}. Schemat kan ha ändrats sedan dess.</footer>
+</body>
+</html>
+`
+}
+
 // ---------------- Volontärer ----------------
+
+/** Telefon och e-post som text som går att markera. tel:/mailto: fungerar inte säkert i artifacten. */
+function Contact({ href, text, className }: { href: string; text: string; className?: string }) {
+  if (isArtifact) return <span className={cx('select-all break-all', className)}>{text}</span>
+  return (
+    <a href={href} className={cx('break-all underline-offset-4 hover:underline', className)}>
+      {text}
+    </a>
+  )
+}
 
 function VolunteersTab({ committee }: { committee: Committee }) {
   const auth = useAuth()
   const canEdit = auth.isLead(committee.id)
   const volunteers = useList('volunteers', { filters: [eq('committee_id', committee.id)], order: [{ col: 'full_name' }] })
-  const shifts = useList('shifts', { filters: [eq('committee_id', committee.id)] })
   const [editing, setEditing] = useState<Volunteer | null>(null)
   const [open, setOpen] = useState(false)
   const [bulk, setBulk] = useState(false)
 
   async function removeVolunteer(v: Volunteer) {
-    if (!confirm(`Ta bort ${v.full_name} från ${committee.name}? Personen tas även bort från kommitténs pass.`)) return
-    await Promise.all(
-      shifts.data
-        .filter((s) => s.volunteer_ids.includes(v.id))
-        .map((s) => api.update('shifts', s.id, { volunteer_ids: s.volunteer_ids.filter((x) => x !== v.id) })),
-    )
-    await api.remove('volunteers', v.id)
+    const ok = await confirmDialog({
+      title: `Ta bort ${v.full_name}?`,
+      message: `${v.full_name} tas bort från ${committee.name} och från kommitténs pass.`,
+      confirmLabel: 'Ta bort',
+      danger: true,
+    })
+    if (!ok) return
+    try {
+      // Hämta passen på nytt: någon kan ha ändrat dem medan frågan var öppen.
+      const latest = await api.list('shifts', { filters: [eq('committee_id', committee.id)] })
+      await Promise.all(
+        latest
+          .filter((s) => s.volunteer_ids.includes(v.id))
+          .map((s) => api.update('shifts', s.id, { volunteer_ids: s.volunteer_ids.filter((x) => x !== v.id) })),
+      )
+      await api.remove('volunteers', v.id)
+      notify(`${v.full_name} är borttagen`)
+    } catch (e) {
+      notify((e as Error).message, 'error')
+    }
   }
 
   if (volunteers.loading) return <Spinner />
 
+  const n = volunteers.data.length
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-slate-600">
-          {volunteers.data.length} volontärer. Den som finns här med sin e-post kan logga in.
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <p className="max-w-[60ch] text-base text-muted">
+          {n} {n === 1 ? 'volontär' : 'volontärer'}. Den som finns här med sin e-post kan logga in.
         </p>
         {canEdit && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={() => setBulk(true)}>
               <ClipboardPaste className="size-4" /> Klistra in lista
             </Button>
@@ -302,51 +464,45 @@ function VolunteersTab({ committee }: { committee: Committee }) {
           </div>
         )}
       </div>
-      {volunteers.data.length === 0 ? (
+      {n === 0 ? (
         <Empty>Inga volontärer ännu.</Empty>
       ) : (
-        <Card className="divide-y divide-slate-100">
-          {volunteers.data.map((v) => (
-            <div key={v.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3">
-              <div className="min-w-40 flex-1">
-                <div className="flex items-center gap-2 font-medium text-ink">
-                  {v.full_name}
-                  {v.is_lead && <Badge tone="violet">Ansvarig</Badge>}
+        <ul className="divide-y divide-line border-y border-line">
+          {volunteers.data.map((v) => {
+            const meta = [v.is_lead && 'Kommittéansvarig', v.notes].filter(Boolean).join(' · ')
+            return (
+              <li key={v.id} className="flex items-start gap-3 py-4">
+                <div className="min-w-0 flex-1">
+                  <div className="text-base font-medium text-ink">{v.full_name}</div>
+                  {meta && <div className="text-sm text-muted">{meta}</div>}
+                  {(v.phone || v.email) && (
+                    <div className="mt-1 flex flex-col gap-x-6 text-base sm:flex-row sm:flex-wrap">
+                      {v.phone && <Contact href={`tel:${v.phone.replace(/\s/g, '')}`} text={v.phone} className="text-slate-800" />}
+                      {v.email && <Contact href={`mailto:${v.email}`} text={v.email} className="text-muted" />}
+                    </div>
+                  )}
                 </div>
-                {v.notes && <div className="text-xs text-slate-500">{v.notes}</div>}
-              </div>
-              <div className="flex min-w-0 flex-col text-sm sm:w-72">
-                {v.phone && (
-                  <a href={`tel:${v.phone.replace(/\s/g, '')}`} className="text-slate-700 hover:underline">
-                    {v.phone}
-                  </a>
+                {canEdit && (
+                  <div className="-me-2 flex shrink-0">
+                    <IconBtn
+                      label={`Redigera ${v.full_name}`}
+                      onClick={() => {
+                        setEditing(v)
+                        setOpen(true)
+                      }}
+                      icon={<Pencil className="size-4" />}
+                    />
+                    <IconBtn label={`Ta bort ${v.full_name}`} danger onClick={() => removeVolunteer(v)} icon={<Trash2 className="size-4" />} />
+                  </div>
                 )}
-                {v.email && (
-                  <a href={`mailto:${v.email}`} className="truncate text-slate-500 hover:underline">
-                    {v.email}
-                  </a>
-                )}
-              </div>
-              {canEdit && (
-                <div className="flex gap-1">
-                  <IconBtn
-                    label="Redigera"
-                    onClick={() => {
-                      setEditing(v)
-                      setOpen(true)
-                    }}
-                    icon={<Pencil className="size-4" />}
-                  />
-                  <IconBtn label="Ta bort" danger onClick={() => removeVolunteer(v)} icon={<Trash2 className="size-4" />} />
-                </div>
-              )}
-            </div>
-          ))}
-        </Card>
+              </li>
+            )
+          })}
+        </ul>
       )}
       {canEdit && (
         <>
-          <VolunteerEditor open={open} onClose={() => setOpen(false)} volunteer={editing} committeeId={committee.id} />
+          <VolunteerEditor open={open} onClose={() => setOpen(false)} volunteer={editing} committeeId={committee.id} existing={volunteers.data} />
           <BulkAdd open={bulk} onClose={() => setBulk(false)} committeeId={committee.id} existing={volunteers.data} />
         </>
       )}
@@ -355,8 +511,22 @@ function VolunteersTab({ committee }: { committee: Committee }) {
 }
 
 const cleanEmail = (e: string) => e.trim().toLowerCase() || null
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-function VolunteerEditor({ open, onClose, volunteer, committeeId }: { open: boolean; onClose: () => void; volunteer: Volunteer | null; committeeId: string }) {
+function VolunteerEditor({
+  open,
+  onClose,
+  volunteer,
+  committeeId,
+  existing,
+}: {
+  open: boolean
+  onClose: () => void
+  volunteer: Volunteer | null
+  committeeId: string
+  existing: Volunteer[]
+}) {
+  const { managedSignIn } = useAuth()
   const [d, setD] = useState({ full_name: '', email: '', phone: '', is_lead: false, notes: '' })
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -374,13 +544,17 @@ function VolunteerEditor({ open, onClose, volunteer, committeeId }: { open: bool
   }, [open, volunteer])
 
   async function save() {
-    if (!d.full_name.trim()) return setErr('Skriv ett namn.')
+    if (!d.full_name.trim()) return setErr('Skriv personens namn.')
+    const email = cleanEmail(d.email)
+    if (email && !EMAIL_RE.test(email)) return setErr('Skriv e-postadressen i formatet namn@exempel.se.')
+    const twin = email && existing.find((x) => x.id !== volunteer?.id && x.email?.toLowerCase() === email)
+    if (twin) return setErr(`${twin.full_name} har redan den e-postadressen i kommittén.`)
     setBusy(true)
     setErr(null)
     const row = {
       committee_id: committeeId,
       full_name: d.full_name.trim(),
-      email: cleanEmail(d.email),
+      email,
       phone: d.phone.trim() || null,
       is_lead: d.is_lead,
       notes: d.notes.trim() || null,
@@ -398,30 +572,43 @@ function VolunteerEditor({ open, onClose, volunteer, committeeId }: { open: bool
 
   return (
     <Modal open={open} onClose={onClose} title={volunteer ? 'Redigera volontär' : 'Ny volontär'}>
-      <div className="space-y-4">
+      <form
+        className="space-y-5"
+        onSubmit={(e) => {
+          e.preventDefault()
+          save()
+        }}
+      >
         <Field label="Namn" required>
-          <Input value={d.full_name} onChange={(e) => setD({ ...d, full_name: e.target.value })} />
+          <Input value={d.full_name} autoComplete="off" onChange={(e) => setD({ ...d, full_name: e.target.value })} />
         </Field>
-        <Field label="E-post" hint="Behövs för att kunna logga in.">
-          <Input type="email" inputMode="email" value={d.email} onChange={(e) => setD({ ...d, email: e.target.value })} />
+        <Field
+          label="E-post"
+          hint={
+            managedSignIn
+              ? 'Samma adress som personen är inloggad med på claude.ai. Med en annan adress kommer hen inte in.'
+              : 'Samma adress som personen loggar in med. Utan e-post kan hen inte logga in.'
+          }
+        >
+          <Input type="email" inputMode="email" autoComplete="off" value={d.email} onChange={(e) => setD({ ...d, email: e.target.value })} />
         </Field>
         <Field label="Telefon">
-          <Input type="tel" inputMode="tel" value={d.phone} onChange={(e) => setD({ ...d, phone: e.target.value })} />
+          <Input type="tel" inputMode="tel" autoComplete="off" value={d.phone} onChange={(e) => setD({ ...d, phone: e.target.value })} />
         </Field>
-        <Field label="Anteckning">
+        <Field label="Anteckning" hint="Syns för alla i kommittén.">
           <Input value={d.notes} onChange={(e) => setD({ ...d, notes: e.target.value })} />
         </Field>
         <Checkbox label="Kommittéansvarig (kan redigera schema, volontärer och info)" checked={d.is_lead} onChange={(v) => setD({ ...d, is_lead: v })} />
         <ErrorText>{err}</ErrorText>
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose}>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onClose}>
             Avbryt
           </Button>
-          <Button onClick={save} loading={busy}>
-            Spara
+          <Button type="submit" loading={busy}>
+            Spara volontär
           </Button>
         </div>
-      </div>
+      </form>
     </Modal>
   )
 }
@@ -441,6 +628,7 @@ function parseLines(text: string) {
 }
 
 function BulkAdd({ open, onClose, committeeId, existing }: { open: boolean; onClose: () => void; committeeId: string; existing: Volunteer[] }) {
+  const { managedSignIn } = useAuth()
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -482,22 +670,25 @@ function BulkAdd({ open, onClose, committeeId, existing }: { open: boolean; onCl
 
   return (
     <Modal open={open} onClose={onClose} title="Lägg till flera volontärer">
-      <div className="space-y-4">
-        <Field label="En person per rad" hint="Namn, e-post, telefon – separera med komma, semikolon eller tabb (t.ex. inklistrat från Excel).">
+      <div className="space-y-5">
+        <Field
+          label="En person per rad"
+          hint={`Namn, e-post och telefon, åtskilda med komma, semikolon eller tabb (t.ex. inklistrat från Excel). E-posten ska vara den adress personen loggar in med${managedSignIn ? ' på claude.ai' : ''}.`}
+        >
           <Textarea rows={8} value={text} onChange={(e) => setText(e.target.value)} placeholder={'Sara Ali, sara@exempel.se, 070-123 45 67\nOmar Berg, omar@exempel.se'} />
         </Field>
         {rows.length > 0 && (
-          <div className="rounded-xl bg-slate-50 p-3 text-sm">
-            <div className="mb-1 font-medium text-slate-700">
-              {rows.length} nya personer:
-              {skipped > 0 && <span className="font-normal text-slate-500"> ({skipped} dubbletter hoppas över)</span>}
+          <div className="border-y border-line py-3 text-base">
+            <div className="mb-1 font-medium text-ink">
+              {rows.length} {rows.length === 1 ? 'ny person' : 'nya personer'}
+              {skipped > 0 && <span className="font-normal text-muted"> ({skipped} dubbletter hoppas över)</span>}
             </div>
-            <ul className="space-y-0.5 text-slate-600">
+            <ul className="space-y-0.5 text-slate-700">
               {rows.slice(0, 12).map((r, i) => (
-                <li key={i}>
+                <li key={i} className="break-words">
                   {r.full_name}
-                  {r.email && <span className="text-slate-400"> · {r.email}</span>}
-                  {r.phone && <span className="text-slate-400"> · {r.phone}</span>}
+                  {r.email && <span className="text-muted"> · {r.email}</span>}
+                  {r.phone && <span className="text-muted"> · {r.phone}</span>}
                 </li>
               ))}
               {rows.length > 12 && <li>… och {rows.length - 12} till</li>}
@@ -505,8 +696,8 @@ function BulkAdd({ open, onClose, committeeId, existing }: { open: boolean; onCl
           </div>
         )}
         <ErrorText>{err}</ErrorText>
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose}>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>
             Avbryt
           </Button>
           <Button onClick={save} loading={busy} disabled={!rows.length}>
@@ -529,8 +720,8 @@ function InfoTab({ committee }: { committee: Committee }) {
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-slate-600">Intern info till volontärerna och extern info som visas på besökarsidan.</p>
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <p className="max-w-[60ch] text-base text-muted">Intern info till volontärerna och extern info som visas på besökarsidan.</p>
         {canEdit && (
           <Button
             onClick={() => {
@@ -547,7 +738,7 @@ function InfoTab({ committee }: { committee: Committee }) {
       ) : posts.data.length === 0 ? (
         <Empty icon={<Megaphone className="size-8 text-slate-300" />}>Inga inlägg från {committee.name} ännu.</Empty>
       ) : (
-        <div className="space-y-3">
+        <div className="divide-y divide-line border-y border-line">
           {posts.data.map((p) => (
             <PostCard
               key={p.id}

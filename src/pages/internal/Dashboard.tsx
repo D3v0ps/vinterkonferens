@@ -1,12 +1,12 @@
 import { useMemo } from 'react'
-import { CalendarCheck, ChevronRight, Coffee, Gauge, Megaphone, NotebookPen, ShoppingCart } from 'lucide-react'
+import { ChevronRight, Gauge } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
 import { useConference } from '../../lib/conference'
 import { eq } from '../../lib/db'
 import { useList, useNow } from '../../lib/hooks'
 import { formatDay, localDate } from '../../lib/time'
-import { Card, Empty, PageHeader } from '../../components/ui'
+import { PageHeader } from '../../components/ui'
 import { shiftState } from '../../components/internal-core/shifts'
 import { ShiftItem, useMyShifts } from '../../components/internal-core/MyShifts'
 import { PostCard } from './Posts'
@@ -28,45 +28,51 @@ export default function Dashboard() {
   const upcoming = useMemo(() => mine.filter((s) => shiftState(s, at) !== 'done').slice(0, 4), [mine, at])
   const myCommittees = auth.committees.filter((c) => auth.memberships.some((m) => m.committee_id === c.id))
   const firstName = auth.displayName.split(' ')[0]
+  const counts = {
+    ordning: myCommittees.some((c) => c.slug === 'ordning'),
+    koket: myCommittees.some((c) => c.slug === 'koket'),
+  }
 
   return (
-    <div className="space-y-8">
-      <PageHeader title={`Hej ${firstName}!`} subtitle={<span className="inline-block first-letter:uppercase">{formatDay(today)} · {settings.conference_name}</span>} />
+    <div className="space-y-12">
+      <PageHeader
+        title={
+          firstName ? (
+            <>
+              Hej <em className="font-display font-normal italic">{firstName}</em>!
+            </>
+          ) : (
+            'Hej!'
+          )
+        }
+        subtitle={<span className="inline-block first-letter:uppercase">{formatDay(today)} · {settings.conference_name}</span>}
+      />
 
-      {myCommittees.some((c) => c.slug === 'ordning' || c.slug === 'koket') && (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {myCommittees.some((c) => c.slug === 'ordning') && (
-            <QuickLink to="/intern/rakning" icon={<Gauge className="size-6" />} title="Räkna publiken" text="5 min efter start, vid mittpunkten och 5 min före slut." accent />
-          )}
-          {myCommittees.some((c) => c.slug === 'koket') && (
-            <QuickLink to="/intern/rakning" icon={<Coffee className="size-6" />} title="Köksräknaren" text="Tryck för varje gäst och beställning." accent />
-          )}
-        </div>
-      )}
+      {(counts.ordning || counts.koket) && <CountLink ordning={counts.ordning} koket={counts.koket} />}
 
       <section>
-        <SectionTitle to="/intern/mitt-schema" icon={<CalendarCheck className="size-4" />}>
+        <SectionTitle to="/intern/mitt-schema" linkLabel="Hela mitt schema">
           Mina kommande pass
         </SectionTitle>
         {loading ? null : upcoming.length === 0 ? (
-          <Empty>Inga kommande pass.</Empty>
+          <p className="text-base text-muted">Inga kommande pass.</p>
         ) : (
-          <div className="space-y-3">
+          <ul className="divide-y divide-line border-y border-line">
             {upcoming.map((s) => (
               <ShiftItem key={s.id} shift={s} state={shiftState(s, at)} dateLabel={s.date === today ? 'Idag' : formatDay(s.date, 'sv', { weekday: 'short', day: 'numeric', month: 'short' })} />
             ))}
-          </div>
+          </ul>
         )}
       </section>
 
       <section>
-        <SectionTitle to="/intern/info" icon={<Megaphone className="size-4" />}>
+        <SectionTitle to="/intern/info" linkLabel="All info">
           Senaste info
         </SectionTitle>
         {posts.loading ? null : posts.data.length === 0 ? (
-          <Empty>Inga interna meddelanden ännu.</Empty>
+          <p className="text-base text-muted">Inga interna meddelanden ännu.</p>
         ) : (
-          <div className="space-y-3">
+          <div className="divide-y divide-line border-y border-line">
             {posts.data.map((p) => (
               <PostCard key={p.id} post={p} />
             ))}
@@ -75,50 +81,68 @@ export default function Dashboard() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Mina kommittéer</h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <h2 className="mb-2 text-xl font-semibold text-ink">Genvägar</h2>
+        <ul className="divide-y divide-line border-y border-line">
           {myCommittees.map((c) => (
-            <Link key={c.id} to={`/intern/kommitteer/${c.slug}`}>
-              <Card className="flex items-center gap-3 p-4 transition hover:shadow-md">
-                <span className="size-3 rounded-full" style={{ background: c.color }} />
-                <span className="flex-1 font-medium text-ink">{c.name}</span>
-                {auth.memberships.some((m) => m.committee_id === c.id && m.is_lead) && <span className="text-xs text-slate-500">Ansvarig</span>}
-                <ChevronRight className="size-4 text-slate-400" />
-              </Card>
-            </Link>
+            <QuietLink
+              key={c.id}
+              to={`/intern/kommitteer/${c.slug}`}
+              dot={c.color}
+              title={c.name}
+              meta={auth.memberships.some((m) => m.committee_id === c.id && m.is_lead) ? 'Du är ansvarig' : undefined}
+            />
           ))}
-          <QuickLink to="/intern/anteckningar" icon={<NotebookPen className="size-5" />} title="Ladda upp anteckning" />
-          <QuickLink to="/intern/inkop" icon={<ShoppingCart className="size-5" />} title="Registrera inköp" />
-        </div>
+          <QuietLink to="/intern/anteckningar" title="Ladda upp anteckning" />
+          <QuietLink to="/intern/inkop" title="Registrera inköp" />
+        </ul>
       </section>
     </div>
   )
 }
 
-function SectionTitle({ children, to, icon }: { children: React.ReactNode; to: string; icon: React.ReactNode }) {
+/** Dagens viktigaste handling för ordning och kök: räknaren. Enda accentfärgade ytan på sidan. */
+function CountLink({ ordning, koket }: { ordning: boolean; koket: boolean }) {
+  const title = ordning && koket ? 'Räkna publiken och köket' : ordning ? 'Räkna publiken' : 'Köksräknaren'
+  const text = [
+    ordning && 'Publiken räknas 5 min efter start, vid mittpunkten och 5 min före slut.',
+    koket && 'I köket trycker du för varje gäst och beställning.',
+  ]
+    .filter(Boolean)
+    .join(' ')
   return (
-    <div className="mb-3 flex items-center justify-between">
-      <h2 className="flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-slate-500">
-        {icon} {children}
-      </h2>
-      <Link to={to} className="text-sm text-ink hover:underline">
-        Visa alla
+    <Link to="/intern/rakning" className="flex min-h-14 items-center gap-4 rounded-2xl bg-accent px-5 py-4 text-white hover:bg-accent-strong">
+      <Gauge className="size-6 shrink-0" aria-hidden />
+      <span className="min-w-0 flex-1">
+        <span className="block text-lg font-semibold">{title}</span>
+        <span className="block text-base text-white/90">{text}</span>
+      </span>
+      <ChevronRight className="size-5 shrink-0 rtl:rotate-180" aria-hidden />
+    </Link>
+  )
+}
+
+function SectionTitle({ children, to, linkLabel }: { children: React.ReactNode; to: string; linkLabel: string }) {
+  return (
+    <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4">
+      <h2 className="text-xl font-semibold text-ink">{children}</h2>
+      <Link to={to} className="inline-flex min-h-11 items-center text-base text-ink underline underline-offset-4 hover:text-ink-soft">
+        {linkLabel}
       </Link>
     </div>
   )
 }
 
-function QuickLink({ to, icon, title, text, accent }: { to: string; icon: React.ReactNode; title: string; text?: string; accent?: boolean }) {
+function QuietLink({ to, title, meta, dot }: { to: string; title: string; meta?: string; dot?: string }) {
   return (
-    <Link to={to}>
-      <Card className={`flex h-full items-center gap-3 p-4 transition hover:shadow-md ${accent ? 'border-accent/40 bg-accent-soft' : ''}`}>
-        <span className={accent ? 'text-accent' : 'text-ink'}>{icon}</span>
-        <span className="flex-1">
-          <span className="block font-semibold text-ink">{title}</span>
-          {text && <span className="block text-sm text-slate-600">{text}</span>}
+    <li>
+      <Link to={to} className="group flex min-h-14 items-center gap-3 py-3 hover:bg-white/60">
+        {dot && <span className="size-3 shrink-0 rounded-full" style={{ background: dot }} aria-hidden />}
+        <span className="min-w-0 flex-1">
+          <span className="block text-base font-medium text-ink group-hover:underline">{title}</span>
+          {meta && <span className="block text-sm text-muted">{meta}</span>}
         </span>
-        <ChevronRight className="size-4 text-slate-400" />
-      </Card>
-    </Link>
+        <ChevronRight className="size-5 shrink-0 text-slate-400 group-hover:text-ink rtl:rotate-180" aria-hidden />
+      </Link>
+    </li>
   )
 }

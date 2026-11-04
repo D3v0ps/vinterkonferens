@@ -6,7 +6,8 @@ import { tr } from '../../lib/format'
 import { useList } from '../../lib/hooks'
 import { formatDateTime } from '../../lib/time'
 import type { Localized, Post, PostAudience, PostPage } from '../../lib/types'
-import { Badge, Button, Card, Checkbox, Empty, ErrorText, Field, LocalizedInput, Modal, PageHeader, Select, Spinner, Tabs } from '../../components/ui'
+import { confirmDialog, notify } from '../../components/dialogs'
+import { Badge, Button, Checkbox, Empty, ErrorText, Field, LocalizedInput, Modal, PageHeader, Select, Spinner, Tabs } from '../../components/ui'
 
 export const PAGE_LABEL: Record<PostPage, string> = {
   home: 'Startsidan',
@@ -140,18 +141,18 @@ export function PostEditor({
         </div>
         <LocalizedInput key={`t-${d.audience}`} label="Rubrik" required langs={[...langs]} value={d.title} onChange={(v) => set('title', v)} />
         <LocalizedInput key={`b-${d.audience}`} label="Text" multiline langs={[...langs]} value={d.body} onChange={(v) => set('body', v)} />
-        {d.audience === 'external' && <p className="text-xs text-slate-500">Tomma språk visas på svenska för besökaren.</p>}
+        {d.audience === 'external' && <p className="text-sm text-muted">Språk du lämnar tomma visas på svenska för besökaren.</p>}
         <div className="flex flex-wrap gap-5">
           <Checkbox label="Fäst högst upp" checked={d.pinned} onChange={(v) => set('pinned', v)} />
           <Checkbox label="Publicerad" checked={d.published} onChange={(v) => set('published', v)} />
         </div>
         <ErrorText>{err}</ErrorText>
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose}>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>
             Avbryt
           </Button>
           <Button onClick={save} loading={busy}>
-            Spara
+            Spara inlägg
           </Button>
         </div>
       </div>
@@ -159,46 +160,54 @@ export function PostEditor({
   )
 }
 
+/** Ett inlägg som rad. Lägg raderna i en <div className="divide-y divide-line border-y border-line">. */
 export function PostCard({ post, onEdit }: { post: Post; onEdit?: (p: Post) => void }) {
   const auth = useAuth()
   const canEdit = auth.isAdmin || auth.isLead(post.committee_id)
   const committee = auth.committees.find((c) => c.id === post.committee_id)
+  const title = tr(post.title, 'sv')
+  const body = tr(post.body, 'sv')
+  const meta = [
+    post.pinned && 'Fäst',
+    post.audience === 'external' && `Besökarsidan · ${PAGE_LABEL[post.page]}`,
+    committee?.name,
+    post.author_name,
+    formatDateTime(post.updated_at ?? post.created_at),
+  ].filter(Boolean)
+
+  async function remove() {
+    const ok = await confirmDialog({ title: 'Ta bort inlägget?', message: `"${title}" tas bort för alla.`, confirmLabel: 'Ta bort', danger: true })
+    if (!ok) return
+    try {
+      await api.remove('posts', post.id)
+      notify('Inlägget är borttaget')
+    } catch (e) {
+      notify((e as Error).message, 'error')
+    }
+  }
+
   return (
-    <Card className="p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="mb-1.5 flex flex-wrap gap-1.5">
-            {post.pinned && (
-              <Badge tone="accent">
-                <Pin className="size-3" /> Fäst
-              </Badge>
-            )}
-            <Badge tone={post.audience === 'external' ? 'blue' : 'slate'}>{post.audience === 'external' ? `Extern · ${PAGE_LABEL[post.page]}` : 'Intern'}</Badge>
-            {committee && <Badge>{committee.name}</Badge>}
-            {!post.published && <Badge tone="amber">Ej publicerad</Badge>}
-          </div>
-          <h3 className="font-semibold text-ink">{tr(post.title, 'sv')}</h3>
-          {tr(post.body, 'sv') && <p className="mt-1 whitespace-pre-line text-sm text-slate-700">{tr(post.body, 'sv')}</p>}
-          <p className="mt-2 text-xs text-slate-500">
-            {post.author_name ?? '–'} · {formatDateTime(post.updated_at ?? post.created_at)}
-          </p>
+    <article className="flex items-start gap-3 py-5">
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          {post.pinned && <Pin className="size-4 shrink-0 text-muted" aria-hidden />}
+          <h3 className="text-lg font-semibold text-ink">{title}</h3>
+          {!post.published && <Badge tone="amber">Ej publicerad</Badge>}
         </div>
-        {canEdit && onEdit && (
-          <div className="no-print flex shrink-0 gap-1">
-            <button className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="Redigera" onClick={() => onEdit(post)}>
-              <Pencil className="size-4" />
-            </button>
-            <button
-              className="rounded-lg p-2 text-rose-600 hover:bg-rose-50"
-              aria-label="Ta bort"
-              onClick={() => confirm('Ta bort inlägget?') && api.remove('posts', post.id)}
-            >
-              <Trash2 className="size-4" />
-            </button>
-          </div>
-        )}
+        {body && <p className="mt-1 whitespace-pre-line text-base text-slate-700">{body}</p>}
+        <p className="mt-2 text-sm text-muted">{meta.join(' · ')}</p>
       </div>
-    </Card>
+      {canEdit && onEdit && (
+        <div className="no-print -me-2 flex shrink-0">
+          <button className="grid size-11 place-items-center rounded-xl text-muted hover:bg-slate-100 hover:text-ink" aria-label={`Redigera ${title}`} title="Redigera" onClick={() => onEdit(post)}>
+            <Pencil className="size-4" />
+          </button>
+          <button className="grid size-11 place-items-center rounded-xl text-rose-700 hover:bg-rose-50" aria-label={`Ta bort ${title}`} title="Ta bort" onClick={remove}>
+            <Trash2 className="size-4" />
+          </button>
+        </div>
+      )}
+    </article>
   )
 }
 
@@ -216,7 +225,11 @@ export default function Posts() {
   return (
     <div>
       <PageHeader
-        title="Info & anslag"
+        title={
+          <>
+            Info & <em className="font-display font-normal italic">anslag</em>
+          </>
+        }
         subtitle="Interna meddelanden till volontärer och extern information som visas för besökarna."
         actions={
           canCreate && (
@@ -246,7 +259,7 @@ export default function Posts() {
       ) : list.length === 0 ? (
         <Empty icon={<Megaphone className="size-8 text-slate-300" />}>Inga inlägg ännu.</Empty>
       ) : (
-        <div className="space-y-3">
+        <div className="divide-y divide-line border-y border-line">
           {list.map((p) => (
             <PostCard
               key={p.id}

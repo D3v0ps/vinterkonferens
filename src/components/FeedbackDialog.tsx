@@ -1,9 +1,10 @@
 import { useRef, useState, useSyncExternalStore } from 'react'
-import { Star } from 'lucide-react'
+import { Check, CheckCircle2, Star } from 'lucide-react'
 import { api } from '../lib/api'
 import { uuid } from '../lib/db'
 import { tr } from '../lib/format'
 import { deviceId } from '../lib/hooks'
+import { safeStorage } from '../lib/platform'
 import { useI18n } from '../lib/i18n'
 import type { FeedbackAnswers, Session } from '../lib/types'
 import { Button, ErrorText, Modal, Textarea, cx } from './ui'
@@ -15,7 +16,7 @@ const ratedListeners = new Set<() => void>()
 
 function loadRated(): string[] {
   try {
-    const v: unknown = JSON.parse(localStorage.getItem(RATED_KEY) ?? '[]')
+    const v: unknown = JSON.parse(safeStorage.get(RATED_KEY) ?? '[]')
     return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
   } catch {
     return []
@@ -41,11 +42,7 @@ function subscribeRated(cb: () => void) {
 function markRated(id: string) {
   // Slå ihop med det som redan ligger sparat (t.ex. från en annan flik) så att inget skrivs över.
   ratedCache = [...new Set([...getRated(), ...loadRated(), id])]
-  try {
-    localStorage.setItem(RATED_KEY, JSON.stringify(ratedCache))
-  } catch {
-    /* privat läge */
-  }
+  safeStorage.set(RATED_KEY, JSON.stringify(ratedCache))
   ratedListeners.forEach((l) => l())
 }
 
@@ -117,29 +114,47 @@ export default function FeedbackDialog({ session, onClose, onDone }: { session: 
       {session &&
         (sent ? (
           <div className="py-4 text-center">
-            <div className="text-5xl">🙏</div>
-            <p className="mt-3 font-medium text-ink">{t.rated}</p>
-            <Button className="mt-5" onClick={reset}>
+            <CheckCircle2 className="mx-auto size-12 text-emerald-700" strokeWidth={1.75} aria-hidden />
+            <p className="mt-3 text-lg font-medium text-ink">{t.rated}</p>
+            <Button className="mt-6 w-full sm:w-auto" onClick={reset}>
               {t.close}
             </Button>
           </div>
         ) : (
-          <div className="space-y-5">
-            <p className="font-semibold text-slate-800">{tr(session.title, lang)}</p>
+          <div className="space-y-6">
+            <div>
+              <p className="text-lg leading-snug font-semibold text-ink">{tr(session.title, lang)}</p>
+              <p className="mt-1 text-base text-muted">{t.feedbackHint}</p>
+            </div>
+
             <fieldset>
-              <legend className="mb-2 text-sm font-medium text-slate-700">{t.stars}</legend>
-              <div className="flex justify-center gap-1.5" dir="ltr">
+              <legend className="mb-2 text-base font-medium text-ink">{t.stars}</legend>
+              <div className="flex justify-center gap-1" dir="ltr">
                 {[1, 2, 3, 4, 5].map((n) => (
-                  <button key={n} type="button" onClick={() => setRating(n)} aria-label={t.starN(n)} aria-pressed={rating === n} className="rounded-lg p-1">
-                    <Star className={cx('size-11 transition', n <= rating ? 'fill-amber-400 text-amber-400' : 'text-slate-300')} />
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => {
+                      setRating(n)
+                      setErr(null)
+                    }}
+                    aria-label={t.starN(n)}
+                    aria-pressed={rating === n}
+                    className="grid size-14 place-items-center rounded-xl"
+                  >
+                    <Star className={cx('size-11 transition-colors', n <= rating ? 'fill-amber-400 text-amber-400' : 'text-slate-300')} strokeWidth={1.5} />
                   </button>
                 ))}
               </div>
+              <p className="mt-1 min-h-6 text-center text-base text-muted" aria-live="polite">
+                {rating ? t.starN(rating) : ''}
+              </p>
             </fieldset>
+
             {QUESTIONS.map((q) => (
               <fieldset key={q.key}>
-                <legend className="mb-2 text-sm font-medium text-slate-700">{label(`q_${q.key}`)}</legend>
-                <div className="grid grid-cols-3 gap-2">
+                <legend className="mb-2 text-base font-medium text-ink">{label(`q_${q.key}`)}</legend>
+                <div className="flex flex-wrap gap-2">
                   {q.options.map((o) => {
                     const on = answers[q.key] === o
                     return (
@@ -148,9 +163,12 @@ export default function FeedbackDialog({ session, onClose, onDone }: { session: 
                         type="button"
                         aria-pressed={on}
                         onClick={() => setAnswers({ ...answers, [q.key]: on ? undefined : o })}
-                        className={cx('rounded-xl border px-2 py-3 text-sm font-medium', on ? 'border-ink bg-ink text-white' : 'border-slate-300 bg-white text-slate-700')}
+                        className={cx(
+                          'inline-flex min-h-12 items-center gap-1.5 rounded-full border px-4 text-base font-medium transition-colors',
+                          on ? 'border-ink bg-ink text-white' : 'border-line bg-white text-ink hover:border-slate-400',
+                        )}
                       >
-                        {on ? '✓ ' : ''}
+                        {on && <Check className="size-4" aria-hidden />}
                         {label(`a_${o}`)}
                       </button>
                     )
@@ -158,8 +176,9 @@ export default function FeedbackDialog({ session, onClose, onDone }: { session: 
                 </div>
               </fieldset>
             ))}
+
             <label className="block">
-              <span className="mb-1 block text-sm font-medium text-slate-700">{t.comment}</span>
+              <span className="mb-1.5 block text-base font-medium text-ink">{t.comment}</span>
               <Textarea maxLength={500} value={comment} onChange={(e) => setComment(e.target.value)} placeholder={t.commentPh} />
             </label>
             <ErrorText>{err}</ErrorText>

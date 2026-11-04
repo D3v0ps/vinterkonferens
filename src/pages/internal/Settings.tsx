@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import QRCode from 'qrcode'
-import { Plus, Save, Trash2 } from 'lucide-react'
+import { Download, Plus, Save, Trash2 } from 'lucide-react'
+import { confirmDialog, notify } from '../../components/dialogs'
 import { Button, Card, ErrorText, Field, Input, LocalizedInput, PageHeader, Select, Tabs } from '../../components/ui'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { EMPTY_SETTINGS } from '../../lib/conference'
 import { uuid } from '../../lib/db'
 import { useList } from '../../lib/hooks'
+import { canPrint, isArtifact, safeStorage, saveFile } from '../../lib/platform'
 import { formatDay } from '../../lib/time'
 import type { Committee, ConferenceDay, Lang, Settings } from '../../lib/types'
 
@@ -68,12 +70,12 @@ function General() {
   }, [data])
   const set = (patch: Partial<Settings>) => setS({ ...s, ...patch })
   return (
-    <Card className="space-y-4 p-5">
+    <div className="max-w-2xl space-y-5">
       <Field label="Konferensens namn">
         <Input value={s.conference_name} onChange={(e) => set({ conference_name: e.target.value })} />
       </Field>
       <LocalizedInput label="Undertitel" value={s.tagline} onChange={(tagline) => set({ tagline })} />
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-5 sm:grid-cols-2">
         <Field label="Plats / adress">
           <Input value={s.venue} onChange={(e) => set({ venue: e.target.value })} />
         </Field>
@@ -96,7 +98,7 @@ function General() {
       >
         <Save className="size-4" /> {sv.ok ? 'Sparat ✓' : 'Spara'}
       </Button>
-    </Card>
+    </div>
   )
 }
 
@@ -106,15 +108,20 @@ function Days() {
   const [lang, setLang] = useState<Lang>('sv')
   const sv = useSaver()
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-slate-600">
+    <div className="max-w-3xl">
+      <p className="max-w-[65ch] text-base text-muted">
         Varje dag har ett standardspråk som besökarsidan visas på (t.ex. fredag = arabiska, lördag–söndag = svenska). Besökaren kan alltid byta själv.
       </p>
-      {data.map((d) => (
-        <DayRow key={d.id} day={d} />
-      ))}
-      <Card className="flex flex-wrap items-end gap-3 p-4">
-        <Field label="Nytt datum">
+      {data.length > 0 && (
+        <ul className="mt-4 divide-y divide-line border-y border-line">
+          {data.map((d) => (
+            <DayRow key={d.id} day={d} />
+          ))}
+        </ul>
+      )}
+      <h2 className="mt-10 text-xl font-semibold text-ink">Lägg till dag</h2>
+      <div className="mt-3 flex flex-wrap items-end gap-3">
+        <Field label="Datum">
           <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </Field>
         <Field label="Standardspråk">
@@ -136,8 +143,10 @@ function Days() {
         >
           <Plus className="size-4" /> Lägg till dag
         </Button>
+      </div>
+      <div className="mt-3">
         <ErrorText>{sv.err}</ErrorText>
-      </Card>
+      </div>
     </div>
   )
 }
@@ -145,8 +154,17 @@ function Days() {
 function DayRow({ day }: { day: ConferenceDay }) {
   const [d, setD] = useState(day)
   const sv = useSaver()
+  async function remove() {
+    const ok = await confirmDialog({
+      title: `Ta bort ${formatDay(day.date)}?`,
+      message: 'Dagen försvinner ur konferensdagarna. Programmet och passen för dagen ligger kvar.',
+      confirmLabel: 'Ta bort dagen',
+      danger: true,
+    })
+    if (ok) sv.run(() => api.remove('conference_days', d.id))
+  }
   return (
-    <Card className="space-y-3 p-4">
+    <li className="space-y-4 py-5">
       <div className="flex flex-wrap items-end gap-3">
         <Field label="Datum">
           <Input type="date" value={d.date} onChange={(e) => setD({ ...d, date: e.target.value })} />
@@ -158,19 +176,19 @@ function DayRow({ day }: { day: ConferenceDay }) {
             <option value="en">Engelska</option>
           </Select>
         </Field>
-        <span className="pb-2.5 text-sm first-letter:uppercase text-slate-500">{formatDay(d.date)}</span>
+        {d.date && <span className="inline-block pb-2.5 text-base text-muted first-letter:uppercase">{formatDay(d.date)}</span>}
       </div>
       <LocalizedInput label="Etikett" value={d.label} onChange={(label) => setD({ ...d, label })} />
-      <div className="flex gap-2">
-        <Button size="sm" loading={sv.busy} onClick={() => sv.run(() => api.update('conference_days', d.id, { date: d.date, default_lang: d.default_lang, label: d.label }))}>
+      <div className="flex flex-wrap gap-2">
+        <Button variant="secondary" loading={sv.busy} onClick={() => sv.run(() => api.update('conference_days', d.id, { date: d.date, default_lang: d.default_lang, label: d.label }))}>
           {sv.ok ? 'Sparat ✓' : 'Spara'}
         </Button>
-        <Button size="sm" variant="danger" onClick={() => confirm('Ta bort dagen? Programmet för dagen ligger kvar.') && sv.run(() => api.remove('conference_days', d.id))}>
+        <Button variant="danger" onClick={remove}>
           <Trash2 className="size-4" /> Ta bort
         </Button>
       </div>
       <ErrorText>{sv.err}</ErrorText>
-    </Card>
+    </li>
   )
 }
 
@@ -179,15 +197,20 @@ function Committees() {
   const [name, setName] = useState('')
   const sv = useSaver()
   return (
-    <div className="space-y-3">
-      <p className="text-sm text-slate-600">
-        Medlemmar i <b>Styrgruppen</b> är administratörer. Kommittéansvariga och volontärer läggs till under respektive kommitté.
+    <div>
+      <p className="max-w-[65ch] text-base text-muted">
+        Medlemmar i <b className="font-semibold text-ink">Styrgruppen</b> är administratörer. Kommittéansvariga och volontärer läggs till under respektive kommitté.
       </p>
-      {data.map((c) => (
-        <CommitteeRow key={c.id} c={c} />
-      ))}
-      <Card className="flex flex-wrap items-end gap-3 p-4">
-        <Field label="Ny kommitté" className="flex-1">
+      {data.length > 0 && (
+        <ul className="mt-4 divide-y divide-line border-y border-line">
+          {data.map((c) => (
+            <CommitteeRow key={c.id} c={c} />
+          ))}
+        </ul>
+      )}
+      <h2 className="mt-10 text-xl font-semibold text-ink">Lägg till kommitté</h2>
+      <div className="mt-3 flex flex-wrap items-end gap-3">
+        <Field label="Namn" className="min-w-56 flex-1">
           <Input value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
         <Button
@@ -208,8 +231,10 @@ function Committees() {
         >
           <Plus className="size-4" /> Lägg till
         </Button>
-      </Card>
-      <ErrorText>{sv.err}</ErrorText>
+      </div>
+      <div className="mt-3">
+        <ErrorText>{sv.err}</ErrorText>
+      </div>
     </div>
   )
 }
@@ -217,28 +242,53 @@ function Committees() {
 function CommitteeRow({ c }: { c: Committee }) {
   const [v, setV] = useState(c)
   const sv = useSaver()
+  async function remove() {
+    const ok = await confirmDialog({
+      title: `Ta bort ${c.name}?`,
+      message: 'Kommitténs volontärer och scheman försvinner också. Det går inte att ångra.',
+      confirmLabel: 'Ta bort kommittén',
+      danger: true,
+    })
+    if (ok) sv.run(() => api.remove('committees', c.id))
+  }
   return (
-    <Card className="flex flex-wrap items-end gap-3 p-4">
-      <input type="color" aria-label="Färg" value={v.color} onChange={(e) => setV({ ...v, color: e.target.value })} className="h-10 w-12 rounded-lg border border-slate-300" />
+    <li className="flex flex-wrap items-end gap-3 py-5">
+      <label className="block">
+        <span className="mb-1.5 block text-base font-medium text-slate-800">Färg</span>
+        <input type="color" value={v.color} onChange={(e) => setV({ ...v, color: e.target.value })} className="h-11 w-14 cursor-pointer rounded-xl border border-line bg-white p-1" />
+      </label>
       <Field label="Namn" className="min-w-40 flex-1">
         <Input value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} />
       </Field>
       <Field label="Beskrivning" className="min-w-48 flex-[2]">
         <Input value={v.description} onChange={(e) => setV({ ...v, description: e.target.value })} />
       </Field>
-      <Field label="Ordning" className="w-20">
-        <Input type="number" value={v.sort} onChange={(e) => setV({ ...v, sort: Number(e.target.value) })} />
+      <Field label="Ordning" className="w-24">
+        <Input type="number" inputMode="numeric" value={v.sort} onChange={(e) => setV({ ...v, sort: Number(e.target.value) })} />
       </Field>
-      <Button size="sm" loading={sv.busy} onClick={() => sv.run(() => api.update('committees', c.id, { name: v.name, description: v.description, color: v.color, sort: v.sort }))}>
-        {sv.ok ? 'Sparat ✓' : 'Spara'}
-      </Button>
-      {c.slug !== 'styrgruppen' && (
-        <Button size="sm" variant="danger" onClick={() => confirm(`Ta bort ${c.name}? Volontärer och scheman i kommittén försvinner.`) && sv.run(() => api.remove('committees', c.id))}>
-          <Trash2 className="size-4" />
+      <div className="flex gap-2">
+        <Button
+          variant="secondary"
+          loading={sv.busy}
+          onClick={() => {
+            if (!v.name.trim()) return notify('Kommittén behöver ett namn.', 'error')
+            sv.run(() => api.update('committees', c.id, { name: v.name.trim(), description: v.description, color: v.color, sort: v.sort }))
+          }}
+        >
+          {sv.ok ? 'Sparat ✓' : 'Spara'}
         </Button>
+        {c.slug !== 'styrgruppen' && (
+          <Button variant="danger" onClick={remove} aria-label={`Ta bort ${c.name}`} title="Ta bort">
+            <Trash2 className="size-4" />
+          </Button>
+        )}
+      </div>
+      {sv.err && (
+        <div className="basis-full">
+          <ErrorText>{sv.err}</ErrorText>
+        </div>
       )}
-      {sv.err && <ErrorText>{sv.err}</ErrorText>}
-    </Card>
+    </li>
   )
 }
 
@@ -249,31 +299,112 @@ const QR_PAGES = [
   { path: 'koket', label: 'Köket' },
 ]
 
+const QR_BASE_KEY = 'vk-qr-base'
+// Utanför artifacten är sidans egen adress rätt; i artifacten finns ingen publik adress att gissa.
+const DEFAULT_QR_BASE = isArtifact ? '' : window.location.origin + import.meta.env.BASE_URL
+
+/** "vinterkonferensen.se" → "https://vinterkonferensen.se/". null om adressen inte går att använda. */
+function normalizeBase(raw: string): string | null {
+  const t = raw.trim()
+  if (!t) return null
+  try {
+    const u = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(t) ? t : `https://${t}`)
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null
+    if (!u.hostname.includes('.') && u.hostname !== 'localhost') return null
+    return u.origin + (u.pathname.endsWith('/') ? u.pathname : u.pathname + '/')
+  } catch {
+    return null
+  }
+}
+
+function dataUrlToBlob(dataUrl: string): Blob {
+  const [head, b64] = dataUrl.split(',')
+  const mime = /data:([^;]+)/.exec(head)?.[1] ?? 'image/png'
+  const bin = atob(b64)
+  const bytes = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+  return new Blob([bytes], { type: mime })
+}
+
 function QrCodes() {
-  const base = window.location.origin + import.meta.env.BASE_URL
+  const [raw, setRaw] = useState(() => safeStorage.get(QR_BASE_KEY) ?? DEFAULT_QR_BASE)
+  const base = normalizeBase(raw)
   const [codes, setCodes] = useState<Record<string, string>>({})
+
   useEffect(() => {
-    Promise.all(QR_PAGES.map(async (p) => [p.path, await QRCode.toDataURL(base + p.path, { width: 600, margin: 1, color: { dark: '#0f2a47' } })] as const)).then((e) =>
-      setCodes(Object.fromEntries(e)),
-    )
+    safeStorage.set(QR_BASE_KEY, raw.trim() && raw.trim() !== DEFAULT_QR_BASE ? raw.trim() : null)
+  }, [raw])
+
+  useEffect(() => {
+    if (!base) return setCodes({})
+    let alive = true
+    Promise.all(QR_PAGES.map(async (p) => [p.path, await QRCode.toDataURL(base + p.path, { width: 600, margin: 1, color: { dark: '#0e2240' } })] as const))
+      .then((e) => alive && setCodes(Object.fromEntries(e)))
+      .catch(() => alive && setCodes({}))
+    return () => {
+      alive = false
+    }
   }, [base])
+
+  async function download(path: string) {
+    const url = codes[path]
+    if (!url) return
+    const filename = `qr-${path || 'start'}.png`
+    try {
+      if (await saveFile(filename, dataUrlToBlob(url), 'image/png')) notify(`${filename} sparad`)
+    } catch (e) {
+      notify((e as Error).message, 'error')
+    }
+  }
+
   return (
     <>
-      <p className="mb-4 text-sm text-slate-600">Skriv ut och sätt upp vid entrén, i salen, vid barnrummet och i köket.</p>
-      <div className="grid gap-4 sm:grid-cols-2">
-        {QR_PAGES.map((p) => (
-          <Card key={p.path} className="print-break p-4 text-center">
-            {codes[p.path] && <img src={codes[p.path]} alt={`QR-kod till ${p.label}`} className="mx-auto w-48" />}
-            <div className="mt-2 font-semibold text-ink">{p.label}</div>
-            <div className="break-all text-xs text-slate-500">{base + p.path}</div>
-            {codes[p.path] && (
-              <a href={codes[p.path]} download={`qr-${p.path || 'start'}.png`} className="no-print mt-2 inline-block text-sm text-ink underline">
-                Ladda ner
-              </a>
-            )}
-          </Card>
-        ))}
+      <div className="no-print max-w-xl">
+        <Field
+          label="Sidans adress"
+          hint="Adressen där besökarsidan ligger på nätet. QR-koderna leder dit."
+        >
+          <Input
+            type="url"
+            inputMode="url"
+            autoComplete="off"
+            spellCheck={false}
+            value={raw}
+            onChange={(e) => setRaw(e.target.value)}
+            placeholder="https://vinterkonferensen.se/"
+            aria-invalid={!!raw.trim() && !base}
+          />
+        </Field>
+        {raw.trim() && !base && <p className="mt-1.5 text-base text-rose-700">Skriv en hel webbadress, till exempel https://vinterkonferensen.se/</p>}
+        {!raw.trim() && <p className="mt-3 text-base text-muted">Skriv in adressen så skapas QR-koderna.</p>}
+        {!isArtifact && raw.trim() !== DEFAULT_QR_BASE && (
+          <button type="button" className="mt-2 min-h-11 text-base text-ink underline underline-offset-4" onClick={() => setRaw(DEFAULT_QR_BASE)}>
+            Använd den här sidans adress
+          </button>
+        )}
       </div>
+
+      {base && (
+        <>
+          <p className="mt-8 mb-4 max-w-[65ch] text-base text-muted">
+            {canPrint
+              ? 'Skriv ut sidan eller ladda ner bilderna och sätt upp dem vid entrén, i salen, vid barnrummet och i köket.'
+              : 'Ladda ner bilderna, skriv ut dem och sätt upp dem vid entrén, i salen, vid barnrummet och i köket.'}
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {QR_PAGES.map((p) => (
+              <Card key={p.path} className="print-break p-5 text-center">
+                {codes[p.path] ? <img src={codes[p.path]} alt={`QR-kod till ${p.label}`} className="mx-auto w-48" /> : <div className="mx-auto size-48" />}
+                <div className="mt-3 text-lg font-semibold text-ink">{p.label}</div>
+                <div className="select-all break-all text-sm text-muted">{base + p.path}</div>
+                <Button variant="secondary" className="no-print mt-3" disabled={!codes[p.path]} onClick={() => download(p.path)}>
+                  <Download className="size-4" /> Ladda ner bild
+                </Button>
+              </Card>
+            ))}
+          </div>
+        </>
+      )}
     </>
   )
 }

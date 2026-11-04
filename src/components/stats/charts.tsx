@@ -1,6 +1,7 @@
 // Små, beroendefria diagram (HTML/CSS) enligt dataviz-metoden:
 // tunna staplar (≤24 px, 4 px rundad topp, rak mot baslinjen), hårfina rutnät,
 // text i textfärger – aldrig i seriefärgen – och tooltip på hover/fokus.
+// All text är minst 14 px och skrivs med gemener som vanlig text.
 import type { ReactNode } from 'react'
 import { cx } from '../ui'
 
@@ -15,11 +16,11 @@ export function Tip({ value, label, className }: { value: ReactNode; label: Reac
     <span
       role="tooltip"
       className={cx(
-        'pointer-events-none absolute bottom-full start-1/2 z-10 mb-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs shadow-md group-hover:block group-focus-visible:block rtl:translate-x-1/2',
+        'pointer-events-none absolute bottom-full start-1/2 z-10 mb-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-lg border border-line bg-white px-3 py-2 text-sm shadow-md group-hover:block group-focus-visible:block rtl:translate-x-1/2',
         className,
       )}
     >
-      <b className="block text-sm" style={{ color: INK.primary }}>{value}</b>
+      <b className="block text-base" style={{ color: INK.primary }}>{value}</b>
       <span style={{ color: INK.secondary }}>{label}</span>
     </span>
   )
@@ -67,7 +68,7 @@ export function ColumnChart({ data, height = 180, unit = 'st', label }: { data: 
   return (
     <figure aria-label={label}>
       <div className="flex" style={{ height }}>
-        <div className="relative w-8 shrink-0 text-[10px] tabular-nums" style={{ color: INK.muted }} aria-hidden>
+        <div className="relative w-10 shrink-0 text-sm tabular-nums" style={{ color: INK.secondary }} aria-hidden>
           {ticks.map((t) => (
             <span key={t} className="absolute end-1.5 translate-y-1/2" style={{ bottom: `${(t / top) * 100}%` }}>
               {t}
@@ -92,7 +93,7 @@ export function ColumnChart({ data, height = 180, unit = 'st', label }: { data: 
                     <div className="w-full max-w-6 rounded-t-[4px] transition group-hover:brightness-110" style={{ height: `${h}%`, background: SERIES[0] }} />
                   )}
                   {i === peak && (
-                    <span className="absolute start-1/2 -translate-x-1/2 text-[11px] font-semibold tabular-nums rtl:translate-x-1/2" style={{ bottom: `calc(${h}% + 2px)`, color: INK.secondary }}>
+                    <span className="absolute start-1/2 -translate-x-1/2 text-sm font-semibold tabular-nums rtl:translate-x-1/2" style={{ bottom: `calc(${h}% + 2px)`, color: INK.secondary }}>
                       {d.value}
                     </span>
                   )}
@@ -103,7 +104,7 @@ export function ColumnChart({ data, height = 180, unit = 'st', label }: { data: 
           </div>
         </div>
       </div>
-      <div className="flex ps-8 pt-1 text-[10px] tabular-nums" style={{ color: INK.muted }} aria-hidden>
+      <div className="flex ps-10 pt-1.5 text-sm tabular-nums" style={{ color: INK.secondary }} aria-hidden>
         {data.map((d) => (
           <span key={d.key} className="min-w-0 flex-1 overflow-visible whitespace-nowrap">
             {d.x}
@@ -120,7 +121,7 @@ export interface Part {
   value: number
 }
 
-/** Hög segmenterad stapel (28 px): en helhet uppdelad i delar, andel skriven inuti när den får plats. */
+/** Hög segmenterad stapel (32 px): en helhet uppdelad i delar, andel skriven inuti när den får plats. */
 export function SegmentedBar({ parts, label }: { parts: Part[]; label: string }) {
   const total = parts.reduce((a, p) => a + p.value, 0)
   const pct = (v: number) => (total ? Math.round((v / total) * 100) : 0)
@@ -129,7 +130,7 @@ export function SegmentedBar({ parts, label }: { parts: Part[]; label: string })
       <div
         role="img"
         aria-label={`${label}: ${parts.map((p) => `${p.label} ${pct(p.value)} % (${p.value})`).join(', ')}`}
-        className="flex h-7 w-full gap-[2px]"
+        className="flex h-8 w-full gap-[2px]"
       >
         {total === 0 ? (
           <div className="h-full w-full rounded-[4px] bg-slate-100" />
@@ -139,10 +140,10 @@ export function SegmentedBar({ parts, label }: { parts: Part[]; label: string })
               <div
                 key={p.key}
                 tabIndex={0}
-                className="group relative flex h-full items-center rounded-[4px] ps-2 text-xs font-semibold text-white outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-slate-400"
+                className="group relative flex h-full items-center rounded-[4px] ps-2 text-sm font-semibold text-white outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-slate-400"
                 style={{ flexGrow: p.value, flexBasis: 0, background: SERIES[i % SERIES.length] }}
               >
-                {p.value / total >= 0.14 && <span aria-hidden>{pct(p.value)} %</span>}
+                {p.value / total >= 0.16 && <span aria-hidden>{pct(p.value)} %</span>}
                 <Tip value={`${pct(p.value)} % (${p.value})`} label={p.label} />
               </div>
             ) : null,
@@ -156,13 +157,34 @@ export function SegmentedBar({ parts, label }: { parts: Part[]; label: string })
 
 export function Legend({ items }: { items: string[] }) {
   return (
-    <ul className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs" style={{ color: INK.secondary }}>
+    <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm" style={{ color: INK.secondary }}>
       {items.map((it, i) => (
         <li key={it} className="inline-flex items-center gap-1.5">
-          <span className="size-2.5 rounded-[3px]" style={{ background: SERIES[i % SERIES.length] }} aria-hidden />
+          <span className="size-3 rounded-[3px]" style={{ background: SERIES[i % SERIES.length] }} aria-hidden />
           {it}
         </li>
       ))}
     </ul>
+  )
+}
+
+export interface Figure {
+  label: string
+  value: ReactNode
+  sub?: ReactNode
+}
+
+/** Nyckeltal utan ramar: stora siffror på rad, avgränsade med hårfina linjer. */
+export function KeyFigures({ items, className }: { items: Figure[]; className?: string }) {
+  return (
+    <dl className={cx('grid grid-cols-2 gap-x-6 gap-y-5 border-y border-line py-5', items.length === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-4', className)}>
+      {items.map((it) => (
+        <div key={it.label} className="min-w-0">
+          <dt className="text-sm text-muted">{it.label}</dt>
+          <dd className="mt-1 text-3xl font-semibold tabular-nums text-ink">{it.value}</dd>
+          {it.sub && <dd className="mt-0.5 text-sm text-muted">{it.sub}</dd>}
+        </div>
+      ))}
+    </dl>
   )
 }

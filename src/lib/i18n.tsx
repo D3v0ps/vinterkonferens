@@ -1,5 +1,6 @@
 // Översättningar för den externa sidan (svenska, engelska, arabiska).
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { safeStorage } from './platform'
 import type { Lang } from './types'
 
 const sv = {
@@ -78,12 +79,12 @@ const sv = {
   email: 'E-post (valfritt)',
   children: 'Barn',
   childName: 'Barnets namn',
-  age: 'Ålder',
-  allergies: 'Allergier / specialkost',
+  age: 'Ålder (valfritt)',
+  allergies: 'Allergier eller specialkost (valfritt)',
   addChild: 'Lägg till barn',
   remove: 'Ta bort',
-  whichDays: 'Vilka dagar?',
-  pickup: 'Vem får hämta barnet?',
+  whichDays: 'Vilka dagar gäller anmälan?',
+  pickup: 'Vem får hämta barnet? (valfritt)',
   notes: 'Övrigt vi bör veta (valfritt)',
   photoConsent: 'Det går bra att barnet syns på bilder från konferensen',
   submitReg: 'Skicka anmälan',
@@ -100,6 +101,25 @@ const sv = {
   kidsLead: 'Aktiviteter för barnen under dagen',
   kitchenLead: 'Mat, fika och kaffe hela dagen',
   programLead: 'Föreläsningar och programpunkter',
+  nowNext: 'Nu & nästa',
+  language: 'Språk',
+  mainNav: 'Huvudmeny',
+  pinned: 'Fäst anslag',
+  noMenu: 'Menyn är inte publicerad än.',
+  feedbackHint: 'Bara stjärnorna behövs. Resten är valfritt.',
+  childN: (n: number) => `Barn ${n}`,
+  phoneHint: 'Så att vi kan nå dig medan barnet är hos oss.',
+  allergiesHint: 'Till exempel nötter, gluten eller laktos.',
+  daysHint: 'Välj alla dagar som gäller.',
+  errorSummary: 'Något behöver rättas',
+  errorPrefix: 'Fel:',
+  errGuardianName: 'Skriv ditt namn',
+  errPhone: 'Skriv ditt mobilnummer',
+  errPhoneShort: 'Mobilnumret är för kort. Skriv hela numret, till exempel 070 123 45 67',
+  errEmail: 'Skriv e-postadressen som namn@exempel.se, eller lämna fältet tomt',
+  errChildName: 'Skriv barnets namn',
+  errAge: 'Skriv en ålder mellan 0 och 17',
+  errDays: 'Välj minst en dag',
 }
 
 type Dict = typeof sv
@@ -181,12 +201,12 @@ const en: Dict = {
   email: 'Email (optional)',
   children: 'Children',
   childName: "Child's name",
-  age: 'Age',
-  allergies: 'Allergies / special diet',
+  age: 'Age (optional)',
+  allergies: 'Allergies or special diet (optional)',
   addChild: 'Add child',
   remove: 'Remove',
-  whichDays: 'Which days?',
-  pickup: 'Who may pick up the child?',
+  whichDays: 'Which days is the registration for?',
+  pickup: 'Who may pick up the child? (optional)',
   notes: 'Anything else we should know (optional)',
   photoConsent: 'It is fine for my child to appear in photos from the conference',
   submitReg: 'Send registration',
@@ -203,6 +223,25 @@ const en: Dict = {
   kidsLead: 'Activities for children during the day',
   kitchenLead: 'Food, snacks and coffee all day',
   programLead: 'Lectures and programme',
+  nowNext: 'Now & next',
+  language: 'Language',
+  mainNav: 'Main menu',
+  pinned: 'Pinned notice',
+  noMenu: 'The menu has not been published yet.',
+  feedbackHint: 'Only the stars are needed. The rest is optional.',
+  childN: (n: number) => `Child ${n}`,
+  phoneHint: 'So we can reach you while your child is with us.',
+  allergiesHint: 'For example nuts, gluten or lactose.',
+  daysHint: 'Select all that apply.',
+  errorSummary: 'Something needs fixing',
+  errorPrefix: 'Error:',
+  errGuardianName: 'Enter your name',
+  errPhone: 'Enter your mobile number',
+  errPhoneShort: 'The mobile number is too short. Enter the full number, for example 070 123 45 67',
+  errEmail: 'Enter the email address like name@example.com, or leave it empty',
+  errChildName: "Enter the child's name",
+  errAge: 'Enter an age between 0 and 17',
+  errDays: 'Choose at least one day',
 }
 
 const ar: Dict = {
@@ -282,12 +321,12 @@ const ar: Dict = {
   email: 'البريد الإلكتروني (اختياري)',
   children: 'الأطفال',
   childName: 'اسم الطفل',
-  age: 'العمر',
-  allergies: 'الحساسية / نظام غذائي خاص',
+  age: 'العمر (اختياري)',
+  allergies: 'الحساسية أو نظام غذائي خاص (اختياري)',
   addChild: 'إضافة طفل',
   remove: 'حذف',
-  whichDays: 'أي أيام؟',
-  pickup: 'من يحق له استلام الطفل؟',
+  whichDays: 'لأي أيام هذا التسجيل؟',
+  pickup: 'من يحق له استلام الطفل؟ (اختياري)',
   notes: 'شيء آخر يجب أن نعرفه (اختياري)',
   photoConsent: 'لا مانع من ظهور طفلي في صور المؤتمر',
   submitReg: 'إرسال التسجيل',
@@ -304,6 +343,25 @@ const ar: Dict = {
   kidsLead: 'أنشطة للأطفال خلال اليوم',
   kitchenLead: 'طعام وحلويات وقهوة طوال اليوم',
   programLead: 'المحاضرات والبرنامج',
+  nowNext: 'الآن والتالي',
+  language: 'اللغة',
+  mainNav: 'القائمة الرئيسية',
+  pinned: 'إعلان مثبّت',
+  noMenu: 'لم تُنشر القائمة بعد.',
+  feedbackHint: 'النجوم فقط مطلوبة. والباقي اختياري.',
+  childN: (n: number) => `الطفل ${n}`,
+  phoneHint: 'لنتمكن من التواصل معك أثناء وجود طفلك معنا.',
+  allergiesHint: 'مثلاً المكسرات أو الغلوتين أو اللاكتوز.',
+  daysHint: 'اختر كل الأيام المناسبة.',
+  errorSummary: 'هناك ما يحتاج إلى تصحيح',
+  errorPrefix: 'خطأ:',
+  errGuardianName: 'اكتب اسمك',
+  errPhone: 'اكتب رقم جوالك',
+  errPhoneShort: 'رقم الجوال قصير جداً. اكتب الرقم كاملاً، مثلاً 070 123 45 67',
+  errEmail: 'اكتب البريد الإلكتروني بالشكل name@example.com، أو اترك الحقل فارغاً',
+  errChildName: 'اكتب اسم الطفل',
+  errAge: 'اكتب عمراً بين 0 و17',
+  errDays: 'اختر يوماً واحداً على الأقل',
 }
 
 const dicts: Record<Lang, Dict> = { sv, en, ar }
@@ -322,11 +380,8 @@ const KEY = 'vk-lang'
 
 export function I18nProvider({ children, fallback }: { children: ReactNode; fallback: Lang }) {
   const [chosenLang, setChosen] = useState<Lang | null>(() => {
-    try {
-      return (localStorage.getItem(KEY) as Lang | null) || null
-    } catch {
-      return null
-    }
+    const v = safeStorage.get(KEY)
+    return v === 'sv' || v === 'en' || v === 'ar' ? v : null
   })
   const lang = chosenLang ?? fallback
   const dir = lang === 'ar' ? 'rtl' : 'ltr'
@@ -348,11 +403,7 @@ export function I18nProvider({ children, fallback }: { children: ReactNode; fall
       chosen: !!chosenLang,
       setLang: (l) => {
         setChosen(l)
-        try {
-          localStorage.setItem(KEY, l)
-        } catch {
-          /* privat läge */
-        }
+        safeStorage.set(KEY, l)
       },
     }),
     [lang, dir, chosenLang],
@@ -367,3 +418,6 @@ export function useI18n(): I18n {
 }
 
 export const LANG_LABEL: Record<Lang, string> = { sv: 'Svenska', en: 'English', ar: 'العربية' }
+
+/** Korta namn för språkväljaren på smala skärmar. */
+export const LANG_SHORT: Record<Lang, string> = { sv: 'Sv', en: 'En', ar: 'عربي' }

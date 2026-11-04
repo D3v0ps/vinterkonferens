@@ -1,7 +1,6 @@
 import { Baby, CalendarDays, ChevronRight, Coffee, MapPin } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { NowNext, PostsList, useDaySessions } from '../../components/Agenda'
-import { Card } from '../../components/ui'
+import { DisplayLast, NowNext, PostsList, useDaySessions } from '../../components/Agenda'
 import { useConference } from '../../lib/conference'
 import { tr } from '../../lib/format'
 import { useNow } from '../../lib/hooks'
@@ -17,29 +16,38 @@ export default function Home() {
   const { sessions: kidsSessions } = useDaySessions(date, ['kids'])
   const kidsNow = kidsSessions.find((s) => sessionStatus(s, at) === 'ongoing') ?? kidsSessions.find((s) => sessionStatus(s, at) === 'upcoming')
 
-  const tiles = [
-    { to: '/program', title: t.adults, sub: t.programLead, icon: CalendarDays, cls: 'bg-ink text-white' },
+  const when = isConferenceDay && date ? `${t.today} · ${formatDay(date, lang)}` : days[0] && today < days[0].date ? `${t.conferenceStarts} ${formatDay(days[0].date, lang)}` : ''
+  const tagline = tr(settings.tagline, lang)
+
+  // Tre ingångar som en lugn lista – inga färgade plattor.
+  const entries = [
+    { to: '/program', title: t.adults, sub: t.programLead, icon: CalendarDays },
     {
       to: '/barn',
       title: t.kids,
-      sub: kidsNow ? `${localTime(kidsNow.starts_at)} · ${tr(kidsNow.title, lang)}` : t.kidsLead,
+      sub: kidsNow ? (
+        <>
+          <span dir="ltr">{localTime(kidsNow.starts_at)}</span> · {tr(kidsNow.title, lang)}
+        </>
+      ) : (
+        t.kidsLead
+      ),
       icon: Baby,
-      cls: 'bg-emerald-700 text-white',
     },
-    { to: '/koket', title: t.kitchen, sub: tr(settings.kitchen_info, lang) || t.kitchenLead, icon: Coffee, cls: 'bg-accent text-white' },
+    { to: '/koket', title: t.kitchen, sub: tr(settings.kitchen_info, lang) || t.kitchenLead, icon: Coffee },
   ]
 
   return (
     <>
-      <section className="mb-5">
-        <p className="text-sm font-semibold first-letter:uppercase text-accent">
-          {isConferenceDay && date ? `${t.today} · ${formatDay(date, lang)}` : days[0] && today < days[0].date ? `${t.conferenceStarts} ${formatDay(days[0].date, lang)}` : ''}
-        </p>
-        <h1 className="mt-1 text-3xl font-black leading-tight tracking-tight text-ink">{settings.conference_name}</h1>
-        {tr(settings.tagline, lang) && <p className="mt-1 text-slate-600">{tr(settings.tagline, lang)}</p>}
+      <section className="pt-2 pb-10 sm:pt-8 sm:pb-14">
+        {when && <p className="text-base text-muted first-letter:uppercase">{when}</p>}
+        <h1 className="mt-2 text-[clamp(2.25rem,10.5vw,4.5rem)] leading-[1.02] font-semibold tracking-tight break-words hyphens-auto text-ink">
+          <DisplayLast text={settings.conference_name} />
+        </h1>
+        {tagline && <p className="mt-4 max-w-[36ch] text-xl leading-snug text-ink-soft">{tagline}</p>}
         {settings.venue && (
-          <p className="mt-2 inline-flex items-center gap-1 text-sm text-slate-500">
-            <MapPin className="size-4" /> {settings.venue}
+          <p className="mt-4 flex items-center gap-1.5 text-base text-muted">
+            <MapPin className="size-4 shrink-0" aria-hidden /> {settings.venue}
           </p>
         )}
       </section>
@@ -47,24 +55,25 @@ export default function Home() {
       <PostsList page="home" />
       {isConferenceDay && <NowNext sessions={sessions} />}
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        {tiles.map((x) => (
-          <Link key={x.to} to={x.to} className={`group flex items-center gap-3 rounded-2xl p-4 shadow-sm sm:flex-col sm:items-start ${x.cls}`}>
-            <x.icon className="size-8 shrink-0 opacity-90" />
-            <span className="min-w-0 flex-1">
-              <span className="block text-lg font-bold">{x.title}</span>
-              <span className="line-clamp-2 block text-sm opacity-85">{x.sub}</span>
-            </span>
-            <ChevronRight className="size-5 shrink-0 opacity-70 sm:hidden rtl:rotate-180" />
-          </Link>
+      <ul className="divide-y divide-line border-y border-line">
+        {entries.map((x) => (
+          <li key={x.to}>
+            <Link to={x.to} className="group flex min-h-18 items-center gap-4 py-4">
+              <x.icon className="size-6 shrink-0 text-ink-soft" strokeWidth={1.75} aria-hidden />
+              <span className="min-w-0 flex-1">
+                <span className="block text-lg leading-snug font-semibold text-ink group-hover:underline group-hover:underline-offset-4">{x.title}</span>
+                <span className="mt-0.5 block truncate text-base text-muted">{x.sub}</span>
+              </span>
+              <ChevronRight className="size-5 shrink-0 text-muted transition-transform group-hover:translate-x-0.5 rtl:rotate-180 rtl:group-hover:-translate-x-0.5" aria-hidden />
+            </Link>
+          </li>
         ))}
-      </div>
+      </ul>
 
       {settings.contact && (
-        <Card className="mt-5 p-4 text-sm text-slate-600">
-          <span className="font-semibold text-ink">{t.info}: </span>
-          {settings.contact}
-        </Card>
+        <p className="mt-8 text-base whitespace-pre-line text-muted">
+          <span className="font-medium text-ink">{t.info}:</span> {settings.contact}
+        </p>
       )}
     </>
   )

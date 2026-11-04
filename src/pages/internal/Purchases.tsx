@@ -1,6 +1,7 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ExternalLink, Pencil, Plus, Receipt, ShoppingCart, Trash2 } from 'lucide-react'
-import { Badge, Button, Card, Empty, ErrorText, Field, Input, Modal, PageHeader, Select, Spinner, Textarea, cx } from '../../components/ui'
+import { confirmDialog, notify } from '../../components/dialogs'
+import { Button, Empty, ErrorText, Input, Modal, PageHeader, Select, Spinner, Textarea, cx } from '../../components/ui'
 import { api, isDemo } from '../../lib/api'
 import { useAuth, useAuthorFields } from '../../lib/auth'
 import { safeFileName, uuid } from '../../lib/db'
@@ -8,6 +9,7 @@ import { kr } from '../../lib/format'
 import { useList } from '../../lib/hooks'
 import { todayStr } from '../../lib/time'
 import type { Purchase, PurchaseItem } from '../../lib/types'
+import { canOpenUrl, FileLinks, Question } from './Notes'
 
 export const toNum = (s: string | number | null | undefined) => {
   if (typeof s === 'number') return s
@@ -23,12 +25,12 @@ export function purchaseTotals(p: Pick<Purchase, 'discount_total'>, items: Pick<
   return { gross, discount, total: gross - discount }
 }
 
-/** Öppnar ett kvitto (signerad länk) i ny flik. */
-export async function openReceipt(path: string) {
-  const w = window.open('', '_blank')
-  const url = await api.fileUrl('receipts', path)
-  if (url && w) w.location.href = url
-  else w?.close()
+/** Användarens webbadress som säker länk: bara http(s), och "ica.se" blir https://ica.se. */
+export function webHref(u: string | null | undefined): string | null {
+  const v = u?.trim()
+  if (!v) return null
+  const full = /^[a-z][a-z0-9+.-]*:/i.test(v) ? v : `https://${v}`
+  return /^https?:\/\/[^\s]+$/i.test(full) ? full : null
 }
 
 export function useCanEditPurchase() {
@@ -61,13 +63,21 @@ export default function Purchases() {
   const sum = shown.reduce((s, p) => s + purchaseTotals(p, byPurchase.get(p.id) ?? []).total, 0)
 
   async function remove(p: Purchase) {
-    if (!confirm(`Ta bort inköpet från ${p.store_name} med alla rader?`)) return
+    const n = byPurchase.get(p.id)?.length ?? 0
+    const ok = await confirmDialog({
+      title: 'Ta bort inköpet?',
+      message: `Inköpet från ${p.store_name}${n ? ` och ${n === 1 ? 'produkten' : `alla ${n} produkter`}` : ''} tas bort, även ur inventarielistan.${p.receipt_path ? ' Kvittot raderas också.' : ''}`,
+      confirmLabel: 'Ta bort',
+      danger: true,
+    })
+    if (!ok) return
     setErr(null)
     try {
       for (const i of byPurchase.get(p.id) ?? []) await api.remove('purchase_items', i.id)
       // Kvittot före raden: lagringsreglerna tillåter borttagningen bara medan inköpet pekar på filen
       if (p.receipt_path) await api.removeFile('receipts', p.receipt_path).catch(() => undefined)
       await api.remove('purchases', p.id)
+      notify('Inköpet är borttaget')
     } catch (e) {
       setErr((e as Error).message)
     }
@@ -80,13 +90,13 @@ export default function Purchases() {
         subtitle="Registrera allt som köps in – butik, kontaktperson, priser och rabatter. Allt hamnar i inventarielistan."
         actions={
           <Button onClick={() => setEditing('new')}>
-            <Plus className="size-4" /> Nytt inköp
+            <Plus className="size-4" aria-hidden /> Nytt inköp
           </Button>
         }
       />
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <Select value={committee} onChange={(e) => setCommittee(e.target.value)} className="w-auto" aria-label="Kommitté">
+        <Select value={committee} onChange={(e) => setCommittee(e.target.value)} className="w-full sm:w-auto" aria-label="Kommitté">
           <option value="">Alla kommittéer</option>
           {auth.committees.map((c) => (
             <option key={c.id} value={c.id}>
@@ -94,9 +104,9 @@ export default function Purchases() {
             </option>
           ))}
         </Select>
-        <span className="text-sm text-slate-600">
-          {shown.length} inköp · totalt <b className="text-ink">{kr(sum)}</b>
-        </span>
+        <p className="text-base text-muted">
+          {shown.length} inköp · totalt <b className="font-semibold text-ink tabular-nums">{kr(sum)}</b>
+        </p>
       </div>
 
       <ErrorText>{err}</ErrorText>
@@ -106,112 +116,52 @@ export default function Purchases() {
       ) : purchases.error ? (
         <ErrorText>{purchases.error}</ErrorText>
       ) : shown.length === 0 ? (
-        <Empty icon={<ShoppingCart className="size-8 text-slate-400" />}>Inga inköp registrerade ännu.</Empty>
+        <Empty icon={<ShoppingCart className="size-8 text-muted" aria-hidden />}>{purchases.data.length ? 'Inga inköp för den kommittén.' : 'Inga inköp registrerade ännu.'}</Empty>
       ) : (
-        <div className="space-y-3">
+        <div className="divide-y divide-line border-y border-line">
           {shown.map((p) => {
             const rows = byPurchase.get(p.id) ?? []
             const t = purchaseTotals(p, rows)
             const c = auth.committees.find((x) => x.id === p.committee_id)
             const isOpen = open === p.id
+            const meta = [p.purchased_on, `${rows.length} ${rows.length === 1 ? 'produkt' : 'produkter'}`, c?.name].filter(Boolean).join(' · ')
             return (
-              <Card key={p.id} className="overflow-hidden">
-                <button onClick={() => setOpen(isOpen ? null : p.id)} className="flex w-full items-start justify-between gap-3 p-4 text-start hover:bg-slate-50" aria-expanded={isOpen}>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold text-ink">{p.store_name}</span>
-                      {c && <Badge>{c.name}</Badge>}
-                    </div>
-                    <div className="mt-0.5 text-sm text-slate-600">
-                      {p.purchased_on} · {rows.length} {rows.length === 1 ? 'rad' : 'rader'}
-                      {p.contact_name && ` · Kontakt: ${p.contact_name}`}
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2 text-end">
-                    <div>
-                      <div className="font-semibold tabular-nums text-ink">{kr(t.total)}</div>
-                      {t.discount > 0 && <div className="text-xs text-emerald-700">−{kr(t.discount)} rabatt</div>}
-                    </div>
-                    <ChevronDown className={cx('size-5 text-slate-400 transition', isOpen && 'rotate-180')} />
-                  </div>
-                </button>
+              <article key={p.id}>
+                {/* Rubrik med knapp i (inte tvärtom), så att skärmläsare hittar inköpen som rubriker */}
+                <h3>
+                  <button onClick={() => setOpen(isOpen ? null : p.id)} className="group flex w-full items-start justify-between gap-3 py-4 text-start" aria-expanded={isOpen}>
+                    <span className="min-w-0">
+                      <span className="block text-lg font-semibold text-ink break-words">{p.store_name}</span>
+                      <span className="mt-0.5 block text-sm font-normal text-muted">{meta}</span>
+                    </span>
+                    <span className="flex shrink-0 items-start gap-2 text-end">
+                      <span>
+                        <span className="block text-lg font-semibold tabular-nums text-ink">{kr(t.total)}</span>
+                        {t.discount > 0 && <span className="block text-sm font-normal text-emerald-800 tabular-nums">−{kr(t.discount)} rabatt</span>}
+                      </span>
+                      <ChevronDown className={cx('mt-1 size-5 text-muted transition group-hover:text-ink', isOpen && 'rotate-180')} aria-hidden />
+                    </span>
+                  </button>
+                </h3>
                 {isOpen && (
-                  <div className="border-t border-slate-100 p-4 text-sm">
-                    <dl className="mb-3 grid gap-x-6 gap-y-1 sm:grid-cols-2">
-                      {p.store_address && <Info label="Adress">{p.store_address}</Info>}
-                      {p.store_url && (
-                        <Info label="Webb">
-                          <a href={p.store_url} target="_blank" rel="noreferrer" className="text-ink-soft underline">
-                            {p.store_url.replace(/^https?:\/\//, '')}
-                          </a>
-                        </Info>
-                      )}
-                      {(p.contact_name || p.contact_phone) && (
-                        <Info label="Kontaktperson">
-                          {p.contact_name} {p.contact_phone && <a href={`tel:${p.contact_phone}`} className="text-ink-soft underline">{p.contact_phone}</a>}
-                        </Info>
-                      )}
-                      {p.paid_by && <Info label="Betalt av">{p.paid_by}</Info>}
-                      {p.discount_total > 0 && <Info label="Rabatt på hela köpet">{kr(p.discount_total)}{p.discount_note && ` – ${p.discount_note}`}</Info>}
-                      {p.notes && <Info label="Övrigt">{p.notes}</Info>}
-                      <Info label="Registrerat av">{p.author_name ?? '–'}</Info>
-                    </dl>
-                    <div className="overflow-x-auto">
-                      <table className="w-full min-w-[32rem] text-left text-sm">
-                        <thead className="text-xs uppercase text-slate-500">
-                          <tr>
-                            <th className="py-1.5 pe-2 text-start font-medium">Produkt</th>
-                            <th className="py-1.5 pe-2 text-start font-medium">Märke</th>
-                            <th className="py-1.5 pe-2 text-end font-medium">Antal</th>
-                            <th className="py-1.5 pe-2 text-end font-medium">À-pris</th>
-                            <th className="py-1.5 pe-2 text-end font-medium">Rabatt</th>
-                            <th className="py-1.5 text-end font-medium">Summa</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {rows.map((i) => (
-                            <tr key={i.id}>
-                              <td className="py-1.5 pe-2">
-                                {i.link ? (
-                                  <a href={i.link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-ink-soft underline">
-                                    {i.name} <ExternalLink className="size-3" />
-                                  </a>
-                                ) : (
-                                  i.name
-                                )}
-                              </td>
-                              <td className="py-1.5 pe-2 text-slate-600">{i.brand}</td>
-                              <td className="py-1.5 pe-2 text-end tabular-nums">
-                                {i.quantity} {i.unit}
-                              </td>
-                              <td className="py-1.5 pe-2 text-end tabular-nums">{kr(i.unit_price)}</td>
-                              <td className="py-1.5 pe-2 text-end tabular-nums text-emerald-700">{i.discount ? `−${kr(i.discount)}` : ''}</td>
-                              <td className="py-1.5 text-end tabular-nums">{kr(lineTotal(i))}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      {p.receipt_path && (
-                        <Button size="sm" variant="secondary" onClick={() => openReceipt(p.receipt_path!)}>
-                          <Receipt className="size-4" /> Kvitto
-                        </Button>
-                      )}
-                      {canEdit(p) && (
+                  <PurchaseDetails
+                    purchase={p}
+                    rows={rows}
+                    actions={
+                      canEdit(p) && (
                         <>
-                          <Button size="sm" variant="secondary" onClick={() => setEditing(p)} disabled={items.loading}>
-                            <Pencil className="size-4" /> Redigera
+                          <Button variant="secondary" onClick={() => setEditing(p)} disabled={items.loading}>
+                            <Pencil className="size-4" aria-hidden /> Redigera
                           </Button>
-                          <Button size="sm" variant="danger" onClick={() => remove(p)} disabled={items.loading}>
-                            <Trash2 className="size-4" /> Ta bort
+                          <Button variant="danger" onClick={() => remove(p)} disabled={items.loading}>
+                            <Trash2 className="size-4" aria-hidden /> Ta bort
                           </Button>
                         </>
-                      )}
-                    </div>
-                  </div>
+                      )
+                    }
+                  />
                 )}
-              </Card>
+              </article>
             )
           })}
         </div>
@@ -223,7 +173,10 @@ export default function Purchases() {
             key={editing === 'new' ? 'new' : editing.id}
             purchase={editing === 'new' ? null : editing}
             items={editing === 'new' ? [] : byPurchase.get(editing.id) ?? []}
-            onDone={() => setEditing(null)}
+            onDone={(saved) => {
+              setEditing(null)
+              if (saved) notify(editing === 'new' ? 'Inköpet är sparat' : 'Ändringarna är sparade')
+            }}
           />
         )}
       </Modal>
@@ -231,11 +184,158 @@ export default function Purchases() {
   )
 }
 
+function PurchaseDetails({ purchase: p, rows, actions }: { purchase: Purchase; rows: PurchaseItem[]; actions: React.ReactNode }) {
+  const site = webHref(p.store_url)
+  return (
+    <div className="space-y-6 pb-6">
+      <dl className="grid gap-x-6 gap-y-2 text-base sm:grid-cols-[11rem_1fr]">
+        {p.store_address && <Info label="Adress">{p.store_address}</Info>}
+        {p.store_url && (
+          <Info label="Webbplats">
+            {site ? (
+              <a href={site} target="_blank" rel="noopener noreferrer" className="break-all text-ink underline decoration-ink/30 underline-offset-4 hover:decoration-ink">
+                {p.store_url.replace(/^https?:\/\//, '')}
+              </a>
+            ) : (
+              <span className="break-all select-all">{p.store_url}</span>
+            )}
+          </Info>
+        )}
+        {(p.contact_name || p.contact_phone) && (
+          <Info label="Kontaktperson">
+            {p.contact_name}
+            {p.contact_name && p.contact_phone && ' · '}
+            {p.contact_phone && (
+              <>
+                <span className="select-all tabular-nums">{p.contact_phone}</span>{' '}
+                <a href={`tel:${p.contact_phone.replace(/[^\d+]/g, '')}`} className="text-ink underline decoration-ink/30 underline-offset-4 hover:decoration-ink">
+                  Ring
+                </a>
+              </>
+            )}
+          </Info>
+        )}
+        {p.paid_by && <Info label="Betalt av">{p.paid_by}</Info>}
+        {p.discount_total > 0 && (
+          <Info label="Rabatt på hela köpet">
+            {kr(p.discount_total)}
+            {p.discount_note && ` – ${p.discount_note}`}
+          </Info>
+        )}
+        {p.notes && <Info label="Övrigt">{p.notes}</Info>}
+        <Info label="Registrerat av">{p.author_name ?? '–'}</Info>
+      </dl>
+
+      {rows.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[34rem] text-base">
+            <thead className="border-b border-line text-sm text-muted">
+              <tr>
+                <th className="py-2 pe-3 text-start font-medium">Produkt</th>
+                <th className="py-2 pe-3 text-start font-medium">Märke</th>
+                <th className="py-2 pe-3 text-end font-medium">Antal</th>
+                <th className="py-2 pe-3 text-end font-medium">À-pris</th>
+                <th className="py-2 pe-3 text-end font-medium">Rabatt</th>
+                <th className="py-2 text-end font-medium">Summa</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {rows.map((i) => {
+                const link = webHref(i.link)
+                return (
+                  <tr key={i.id}>
+                    <td className="py-2 pe-3">
+                      {link ? (
+                        <a href={link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-ink underline decoration-ink/30 underline-offset-4 hover:decoration-ink">
+                          {i.name} <ExternalLink className="size-3.5" aria-label="(öppnas i ny flik)" />
+                        </a>
+                      ) : (
+                        i.name
+                      )}
+                    </td>
+                    <td className="py-2 pe-3 text-muted">{i.brand}</td>
+                    <td className="whitespace-nowrap py-2 pe-3 text-end tabular-nums">
+                      {i.quantity} {i.unit}
+                    </td>
+                    <td className="whitespace-nowrap py-2 pe-3 text-end tabular-nums">{kr(i.unit_price)}</td>
+                    <td className="whitespace-nowrap py-2 pe-3 text-end tabular-nums text-emerald-800">{i.discount ? `−${kr(i.discount)}` : ''}</td>
+                    <td className="whitespace-nowrap py-2 text-end tabular-nums">{kr(lineTotal(i))}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {p.receipt_path && <ReceiptView path={p.receipt_path} name={p.receipt_name} />}
+
+      {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
+    </div>
+  )
+}
+
 function Info({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex gap-2">
-      <dt className="shrink-0 text-slate-500">{label}:</dt>
-      <dd className="min-w-0 break-words">{children}</dd>
+    <>
+      <dt className="text-muted">{label}</dt>
+      <dd className="mb-2 min-w-0 break-words sm:mb-0">{children}</dd>
+    </>
+  )
+}
+
+/** Signerade länkar i Supabase gäller en timme – förnya i tid. */
+const URL_MAX_AGE = 50 * 60 * 1000
+const IMAGE_EXT = /\.(jpe?g|png|gif|webp|avif|heic|heif)$/i
+
+/** Kvittot på sidan: bild direkt, annars "Öppna kvittot" och "Spara" när det går. */
+function ReceiptView({ path, name }: { path: string; name: string | null }) {
+  const [url, setUrl] = useState<string | null>(null)
+  const [state, setState] = useState<'loading' | 'ready' | 'missing'>('loading')
+  const [imgFailed, setImgFailed] = useState(false)
+  const [nonce, setNonce] = useState(0)
+  const fileName = name || 'kvitto'
+  const isImage = IMAGE_EXT.test(fileName)
+
+  useEffect(() => {
+    let created: string | null = null
+    let cancelled = false
+    // Demoläget skapar en ny blob:-adress per anrop; artifactens adresser cachas och får inte släppas
+    const release = (u: string | null) => u && api.mode === 'demo' && u.startsWith('blob:') && URL.revokeObjectURL(u)
+    api
+      .fileUrl('receipts', path)
+      .catch(() => null)
+      .then((u) => {
+        if (cancelled) return void release(u)
+        created = u
+        setUrl(u)
+        setState(u ? 'ready' : 'missing')
+      })
+    const t = api.mode === 'supabase' ? setInterval(() => setNonce((n) => n + 1), URL_MAX_AGE) : null
+    return () => {
+      cancelled = true
+      if (t) clearInterval(t)
+      release(created)
+    }
+  }, [path, nonce])
+
+  return (
+    <div>
+      <h4 className="text-base font-medium text-ink">Kvitto</h4>
+      <div className="mt-2">
+        {state === 'loading' && !url && <p className="text-base text-muted">Hämtar kvittot …</p>}
+        {state === 'missing' && <p className="text-base text-muted">Kvittot hittades inte.</p>}
+        {url && isImage && !imgFailed && (
+          canOpenUrl(url) ? (
+            <a href={url} target="_blank" rel="noopener noreferrer" className="block w-fit max-w-full" aria-label="Öppna kvittot i en ny flik">
+              <img src={url} alt={`Kvitto: ${fileName}`} loading="lazy" decoding="async" onError={() => setImgFailed(true)} className="max-h-96 max-w-full rounded-xl border border-line object-contain" />
+            </a>
+          ) : (
+            <img src={url} alt={`Kvitto: ${fileName}`} loading="lazy" decoding="async" onError={() => setImgFailed(true)} className="max-h-96 max-w-full rounded-xl border border-line object-contain" />
+          )
+        )}
+        {url && (!isImage || imgFailed) && <FileLinks bucket="receipts" path={path} url={url} name={fileName} openLabel="Öppna kvittot" />}
+      </div>
     </div>
   )
 }
@@ -256,16 +356,38 @@ interface ItemDraft {
 const emptyItem = (): ItemDraft => ({ name: '', brand: '', quantity: '1', unit: 'st', unit_price: '', discount: '', link: '', category: '', storage_location: '' })
 /** Tomt eller 0 i Antal sparas som 1 – samma regel i förhandsvisningen. */
 const qty = (r: ItemDraft) => toNum(r.quantity) || 1
+/** Har användaren börjat fylla i raden? (Antal och enhet har förifyllda värden.) */
+const touched = (r: ItemDraft) => [r.brand, r.unit_price, r.discount, r.link, r.category, r.storage_location].some((v) => v.trim())
+/** Tomt eller ett tal som 12, 24,90 eller 1 234,50 (ev. med "kr"). Med `negative` godtas också -10. */
+const isAmount = (v: string, negative = false) =>
+  !v.trim() || (negative ? /^-?\d+([.,]\d+)?$/ : /^\d+([.,]\d+)?$/).test(v.replace(/\s|kr\.?$/gi, ''))
 
 const CATEGORIES = ['Livsmedel', 'Förbrukning', 'Teknik', 'Verktyg', 'Dekoration', 'Barnmaterial', 'Städ', 'Kontor', 'Övrigt']
 const UNITS = ['st', 'paket', 'förp.', 'kg', 'liter', 'rulle', 'låda', 'set']
+const MAX_RECEIPT = 20 * 1024 * 1024
 
 const s = (v: string | null | undefined) => v ?? ''
 const n = (v: string) => (v.trim() ? v.trim() : null)
 
-function PurchaseForm({ purchase, items, onDone }: { purchase: Purchase | null; items: PurchaseItem[]; onDone: () => void }) {
+type Errors = Record<string, string>
+
+function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-6 border-t border-line pt-6">
+      <div>
+        <h3 className="text-xl font-semibold text-ink">{title}</h3>
+        {hint && <p className="mt-1 text-base text-muted">{hint}</p>}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function PurchaseForm({ purchase, items, onDone }: { purchase: Purchase | null; items: PurchaseItem[]; onDone: (saved: boolean) => void }) {
   const auth = useAuth()
   const author = useAuthorFields()
+  const uid = useId()
+  const fid = (k: string) => `${uid}-${k}`
   const fileRef = useRef<HTMLInputElement>(null)
   const [f, setF] = useState({
     store_name: s(purchase?.store_name),
@@ -302,28 +424,75 @@ function PurchaseForm({ purchase, items, onDone }: { purchase: Purchase | null; 
   const [receipt, setReceipt] = useState<File | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [errors, setErrors] = useState<Errors>({})
 
-  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value })
-  const setRow = (i: number, k: keyof ItemDraft, v: string) => setRows(rows.map((r, j) => (j === i ? { ...r, [k]: v } : r)))
+  const clearErr = (k: string) => {
+    if (!errors[k]) return
+    setErrors((prev) => {
+      const next = { ...prev }
+      delete next[k]
+      return next
+    })
+  }
+  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    setF({ ...f, [k]: e.target.value })
+    clearErr(k)
+  }
+  const setRow = (i: number, k: keyof ItemDraft, v: string) => {
+    setRows(rows.map((r, j) => (j === i ? { ...r, [k]: v } : r)))
+    clearErr(`${i}.${k}`)
+  }
+  const removeRow = (i: number) => {
+    setRows(rows.filter((_, j) => j !== i))
+    // Raderna byter plats – släpp felen på produkterna i stället för att peka fel
+    setErrors((e) => Object.fromEntries(Object.entries(e).filter(([k]) => !/^\d+\./.test(k))))
+  }
 
   const parsed = rows.filter((r) => r.name.trim()).map((r) => ({ quantity: qty(r), unit_price: toNum(r.unit_price), discount: toNum(r.discount) }))
   const totals = purchaseTotals({ discount_total: toNum(f.discount_total) }, parsed)
 
+  /** Felen läggs till i samma ordning som fälten står på sidan. */
+  function validate(): Errors {
+    const e: Errors = {}
+    if (!f.store_name.trim()) e.store_name = 'Skriv vilken butik det var, till exempel ICA Maxi.'
+    if (f.store_url.trim() && !webHref(f.store_url)) e.store_url = 'Skriv en webbadress, till exempel ica.se.'
+    const noProducts = !rows.some((r) => r.name.trim())
+    rows.forEach((r, i) => {
+      if (!r.name.trim()) {
+        if (touched(r)) e[`${i}.name`] = 'Skriv vad produkten heter – eller ta bort produkten.'
+        else if (i === 0 && noProducts) e['0.name'] = 'Skriv namnet på minst en produkt.'
+      }
+      if (!isAmount(r.quantity)) e[`${i}.quantity`] = 'Skriv antalet som en siffra, till exempel 2.'
+      // Minus är tillåtet för t.ex. pant som går tillbaka
+      if (!isAmount(r.unit_price, true)) e[`${i}.unit_price`] = 'Skriv priset i kronor, till exempel 24,90.'
+      if (!isAmount(r.discount)) e[`${i}.discount`] = 'Skriv rabatten i kronor, till exempel 10.'
+    })
+    if (!isAmount(f.discount_total)) e.discount_total = 'Skriv rabatten i kronor, till exempel 50.'
+    if (receipt && receipt.size > MAX_RECEIPT) e.receipt = 'Kvittot är för stort. Det får vara högst 20 MB – ta ett nytt foto eller välj en mindre fil.'
+    return e
+  }
+
   async function save(e: React.FormEvent) {
     e.preventDefault()
     setErr(null)
+    const found = validate()
+    setErrors(found)
+    if (Object.keys(found).length) {
+      // Fokus till det första felet uppifrån på sidan, oavsett i vilken ordning felen hittades
+      const first = Object.keys(found)
+        .map((k) => document.getElementById(fid(k)))
+        .filter((el): el is HTMLElement => !!el)
+        .sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1))[0]
+      first?.focus()
+      return setErr('Rätta det som är markerat ovan och spara igen.')
+    }
     const valid = rows.filter((r) => r.name.trim())
-    if (!f.store_name.trim()) return setErr('Fyll i butikens namn.')
-    if (!valid.length) return setErr('Lägg till minst en produkt.')
-    if (receipt && receipt.size > 20 * 1024 * 1024) return setErr('Kvittot är för stort (max 20 MB).')
     setBusy(true)
     try {
       const oldReceipt = purchase?.receipt_path ?? null
       let uploaded: string | null = null
-      if (receipt) {
-        uploaded = `${uuid()}/${safeFileName(receipt.name)}`
-        await api.upload('receipts', uploaded, receipt)
-      }
+      // Adaptern kan lägga filen på en annan sökväg (t.ex. i artifacten) – spara den den ger tillbaka
+      if (receipt) uploaded = await api.upload('receipts', `${uuid()}/${safeFileName(receipt.name)}`, receipt)
       const row: Partial<Purchase> = {
         store_name: f.store_name.trim(),
         store_address: n(f.store_address),
@@ -373,7 +542,7 @@ function PurchaseForm({ purchase, items, onDone }: { purchase: Purchase | null; 
       for (const r of valid.filter((r) => r.id)) await api.update('purchase_items', r.id!, toItem(r))
       const fresh = valid.filter((r) => !r.id).map((r) => ({ ...toItem(r), status: 'in_stock' as const }))
       if (fresh.length) await api.insertMany('purchase_items', fresh)
-      onDone()
+      onDone(true)
     } catch (e) {
       setErr((e as Error).message)
     } finally {
@@ -381,10 +550,20 @@ function PurchaseForm({ purchase, items, onDone }: { purchase: Purchase | null; 
     }
   }
 
+  const receiptName = receipt?.name ?? purchase?.receipt_name ?? null
+
   return (
-    <form onSubmit={save} className="space-y-5">
-      <datalist id="vk-categories">{CATEGORIES.map((c) => <option key={c} value={c} />)}</datalist>
-      <datalist id="vk-units">{UNITS.map((c) => <option key={c} value={c} />)}</datalist>
+    <form onSubmit={save} className="space-y-8" noValidate>
+      <datalist id="vk-categories">
+        {CATEGORIES.map((c) => (
+          <option key={c} value={c} />
+        ))}
+      </datalist>
+      <datalist id="vk-units">
+        {UNITS.map((c) => (
+          <option key={c} value={c} />
+        ))}
+      </datalist>
       <datalist id="vk-paid-by">
         <option value="Föreningens kort" />
         <option value="Faktura" />
@@ -392,122 +571,169 @@ function PurchaseForm({ purchase, items, onDone }: { purchase: Purchase | null; 
         <option value="Utlägg – " />
       </datalist>
 
-      <section className="grid gap-3 sm:grid-cols-2">
-        <Field label="Butik" required>
-          <Input value={f.store_name} onChange={set('store_name')} placeholder="T.ex. ICA Maxi" />
-        </Field>
-        <Field label="Adress / ort">
-          <Input value={f.store_address} onChange={set('store_address')} />
-        </Field>
-        <Field label="Butikens webbplats">
-          <Input type="url" inputMode="url" value={f.store_url} onChange={set('store_url')} placeholder="https://" />
-        </Field>
-        <Field label="Inköpsdatum">
-          <Input type="date" value={f.purchased_on} onChange={set('purchased_on')} />
-        </Field>
-        <Field label="Kontaktperson i butiken">
-          <Input value={f.contact_name} onChange={set('contact_name')} placeholder="Namn och roll" />
-        </Field>
-        <Field label="Kontaktpersonens telefon">
-          <Input type="tel" value={f.contact_phone} onChange={set('contact_phone')} />
-        </Field>
-        <Field label="Kommitté">
-          <Select value={f.committee_id} onChange={set('committee_id')}>
-            <option value="">Ingen / gemensamt</option>
-            {auth.committees.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Betalt av" hint="Föreningens kort, faktura – eller namn vid utlägg.">
-          <Input list="vk-paid-by" value={f.paid_by} onChange={set('paid_by')} />
-        </Field>
-      </section>
+      <p className="text-base text-muted">Butiken och minst en produkt måste fyllas i. Resten fyller du i om du vet.</p>
 
-      <section>
-        <h3 className="mb-2 text-sm font-semibold text-ink">Produkter</h3>
-        <div className="space-y-3">
-          {rows.map((r, i) => (
-            <div key={r.id ?? i} className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-6">
-                <Field label="Produkt" required className="col-span-2">
-                  <Input value={r.name} onChange={(e) => setRow(i, 'name', e.target.value)} />
-                </Field>
-                <Field label="Märke" className="col-span-2 sm:col-span-2">
-                  <Input value={r.brand} onChange={(e) => setRow(i, 'brand', e.target.value)} />
-                </Field>
-                <Field label="Antal">
-                  <Input inputMode="decimal" value={r.quantity} onChange={(e) => setRow(i, 'quantity', e.target.value)} />
-                </Field>
-                <Field label="Enhet">
-                  <Input list="vk-units" value={r.unit} onChange={(e) => setRow(i, 'unit', e.target.value)} />
-                </Field>
-                <Field label="À-pris (kr)">
-                  <Input inputMode="decimal" value={r.unit_price} onChange={(e) => setRow(i, 'unit_price', e.target.value)} />
-                </Field>
-                <Field label="Rabatt (kr)">
-                  <Input inputMode="decimal" value={r.discount} onChange={(e) => setRow(i, 'discount', e.target.value)} placeholder="0" />
-                </Field>
-                <Field label="Kategori" className="col-span-2 sm:col-span-2">
-                  <Input list="vk-categories" value={r.category} onChange={(e) => setRow(i, 'category', e.target.value)} />
-                </Field>
-                <Field label="Förvaringsplats" className="col-span-2 sm:col-span-2">
-                  <Input value={r.storage_location} onChange={(e) => setRow(i, 'storage_location', e.target.value)} />
-                </Field>
-                <Field label="Länk till produkten" className="col-span-2 sm:col-span-4">
-                  <Input type="url" inputMode="url" value={r.link} onChange={(e) => setRow(i, 'link', e.target.value)} placeholder="https://" />
-                </Field>
-                <div className="col-span-2 flex items-end justify-between gap-2">
-                  <span className="pb-2.5 text-sm tabular-nums text-slate-600">
-                    = <b className="text-ink">{kr(qty(r) * toNum(r.unit_price) - toNum(r.discount))}</b>
-                  </span>
+      <Section title="Butik">
+        <Question label="Butikens namn" error={errors.store_name}>
+          <Input id={fid('store_name')} value={f.store_name} onChange={set('store_name')} aria-invalid={!!errors.store_name} autoComplete="off" />
+        </Question>
+        <div className="grid items-end gap-6 sm:grid-cols-2">
+          <Question label="Inköpsdatum">
+            <Input type="date" value={f.purchased_on} onChange={set('purchased_on')} />
+          </Question>
+          <Question label="Kommitté" hint="Vems inköp det är.">
+            <Select value={f.committee_id} onChange={set('committee_id')}>
+              <option value="">Ingen, gemensamt</option>
+              {auth.committees.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+          </Question>
+        </div>
+        <div className="grid items-end gap-6 sm:grid-cols-2">
+          <Question label="Adress eller ort">
+            <Input value={f.store_address} onChange={set('store_address')} />
+          </Question>
+          <Question label="Butikens webbplats" hint="Till exempel ica.se" error={errors.store_url}>
+            <Input id={fid('store_url')} type="url" inputMode="url" value={f.store_url} onChange={set('store_url')} aria-invalid={!!errors.store_url} autoCapitalize="off" />
+          </Question>
+        </div>
+        <div className="grid items-end gap-6 sm:grid-cols-2">
+          <Question label="Kontaktperson i butiken" hint="Namn och roll, om någon hjälpte till.">
+            <Input value={f.contact_name} onChange={set('contact_name')} />
+          </Question>
+          <Question label="Kontaktpersonens telefon">
+            <Input type="tel" inputMode="tel" value={f.contact_phone} onChange={set('contact_phone')} />
+          </Question>
+        </div>
+      </Section>
+
+      <Section title="Produkter" hint="En rad per sorts vara. Allt hamnar i inventarielistan.">
+        <ol className="divide-y divide-line border-y border-line">
+          {rows.map((r, i) => {
+            const e = (k: keyof ItemDraft) => errors[`${i}.${k}`]
+            return (
+              <li key={r.id ?? `new-${i}`} className="space-y-5 py-5">
+                <div className="flex min-h-11 items-center justify-between gap-3">
+                  <h4 className="text-lg font-semibold text-ink">{rows.length > 1 ? `Produkt ${i + 1}` : 'Produkt'}</h4>
                   {rows.length > 1 && (
-                    <Button type="button" size="sm" variant="ghost" onClick={() => setRows(rows.filter((_, j) => j !== i))} aria-label="Ta bort rad">
-                      <Trash2 className="size-4" />
+                    <Button type="button" variant="ghost" className="-me-4" onClick={() => removeRow(i)} aria-label={`Ta bort produkt ${i + 1}${r.name.trim() ? ` (${r.name.trim()})` : ''}`}>
+                      <Trash2 className="size-4" aria-hidden /> Ta bort
                     </Button>
                   )}
                 </div>
-              </div>
-            </div>
-          ))}
-        </div>
-        <Button type="button" variant="secondary" size="sm" className="mt-2" onClick={() => setRows([...rows, emptyItem()])}>
-          <Plus className="size-4" /> Lägg till produkt
+                <Question label="Vad är det?" error={e('name')}>
+                  <Input id={fid(`${i}.name`)} value={r.name} onChange={(ev) => setRow(i, 'name', ev.target.value)} aria-invalid={!!e('name')} autoComplete="off" />
+                </Question>
+                <Question label="Märke">
+                  <Input value={r.brand} onChange={(ev) => setRow(i, 'brand', ev.target.value)} autoComplete="off" />
+                </Question>
+                <div className="grid items-end gap-4 sm:grid-cols-2">
+                  <Question label="Antal" error={e('quantity')}>
+                    <Input id={fid(`${i}.quantity`)} inputMode="decimal" value={r.quantity} onChange={(ev) => setRow(i, 'quantity', ev.target.value)} aria-invalid={!!e('quantity')} />
+                  </Question>
+                  <Question label="Enhet">
+                    <Input list="vk-units" value={r.unit} onChange={(ev) => setRow(i, 'unit', ev.target.value)} />
+                  </Question>
+                </div>
+                <div className="grid items-end gap-4 sm:grid-cols-2">
+                  <Question label="Pris per enhet (kr)" error={e('unit_price')}>
+                    <Input id={fid(`${i}.unit_price`)} inputMode="decimal" value={r.unit_price} onChange={(ev) => setRow(i, 'unit_price', ev.target.value)} aria-invalid={!!e('unit_price')} />
+                  </Question>
+                  <Question label="Rabatt (kr)" error={e('discount')}>
+                    <Input id={fid(`${i}.discount`)} inputMode="decimal" value={r.discount} onChange={(ev) => setRow(i, 'discount', ev.target.value)} aria-invalid={!!e('discount')} />
+                  </Question>
+                </div>
+                <div className="grid items-end gap-5 sm:grid-cols-2">
+                  <Question label="Kategori">
+                    <Input list="vk-categories" value={r.category} onChange={(ev) => setRow(i, 'category', ev.target.value)} />
+                  </Question>
+                  <Question label="Var förvaras den?">
+                    <Input value={r.storage_location} onChange={(ev) => setRow(i, 'storage_location', ev.target.value)} />
+                  </Question>
+                </div>
+                <Question label="Länk till produkten">
+                  <Input type="url" inputMode="url" value={r.link} onChange={(ev) => setRow(i, 'link', ev.target.value)} autoCapitalize="off" />
+                </Question>
+                <p className="text-base text-muted">
+                  Summa för raden <b className="font-semibold text-ink tabular-nums">{kr(qty(r) * toNum(r.unit_price) - toNum(r.discount))}</b>
+                </p>
+              </li>
+            )
+          })}
+        </ol>
+        <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={() => setRows([...rows, emptyItem()])}>
+          <Plus className="size-4" aria-hidden /> Lägg till produkt
         </Button>
-      </section>
+      </Section>
 
-      <section className="grid gap-3 sm:grid-cols-[10rem_1fr]">
-        <Field label="Rabatt hela köpet (kr)">
-          <Input inputMode="decimal" value={f.discount_total} onChange={set('discount_total')} placeholder="0" />
-        </Field>
-        <Field label="Om rabatten" hint="T.ex. föreningsrabatt 10 %, kampanj, vem som ordnade den.">
-          <Input value={f.discount_note} onChange={set('discount_note')} />
-        </Field>
-        <Field label="Kvitto (foto eller PDF)" className="sm:col-span-2">
-          <input ref={fileRef} type="file" accept="image/*,.pdf,.heic,.heif" className="hidden" onChange={(e) => setReceipt(e.target.files?.[0] ?? null)} />
-          <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" variant="secondary" size="sm" onClick={() => fileRef.current?.click()}>
-              <Receipt className="size-4" /> {receipt || purchase?.receipt_path ? 'Byt kvitto' : 'Ladda upp kvitto'}
+      <Section title="Rabatt och betalning">
+        <div className="grid items-end gap-6 sm:grid-cols-2">
+          <Question label="Rabatt på hela köpet (kr)" hint="Utöver rabatterna på produkterna." error={errors.discount_total}>
+            <Input id={fid('discount_total')} inputMode="decimal" value={f.discount_total} onChange={set('discount_total')} aria-invalid={!!errors.discount_total} />
+          </Question>
+          <Question label="Om rabatten" hint="Till exempel föreningsrabatt 10 %, kampanj, vem som ordnade den.">
+            <Input value={f.discount_note} onChange={set('discount_note')} />
+          </Question>
+        </div>
+        <Question label="Betalt av" hint="Föreningens kort, faktura – eller namn vid utlägg.">
+          <Input list="vk-paid-by" value={f.paid_by} onChange={set('paid_by')} className="sm:max-w-sm" />
+        </Question>
+      </Section>
+
+      <Section title="Kvitto">
+        <div>
+          <p className="text-base font-medium text-ink">Foto eller PDF av kvittot</p>
+          <p className="mt-0.5 text-sm text-muted">Högst 20 MB.</p>
+          {errors.receipt && <p className="mt-1 text-base font-medium text-rose-700">{errors.receipt}</p>}
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*,.pdf,.heic,.heif"
+            className="hidden"
+            onChange={(e) => {
+              setReceipt(e.target.files?.[0] ?? null)
+              clearErr('receipt')
+            }}
+          />
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+            <Button id={fid('receipt')} type="button" variant="secondary" onClick={() => fileRef.current?.click()}>
+              <Receipt className="size-4" aria-hidden /> {receiptName ? 'Byt kvitto' : 'Välj kvitto'}
             </Button>
-            <span className="truncate text-sm text-slate-600">{receipt?.name ?? purchase?.receipt_name ?? ''}</span>
+            {receiptName && <span className="min-w-0 truncate text-base text-muted">{receiptName}</span>}
           </div>
-        </Field>
-        <Field label="Övrigt" className="sm:col-span-2">
+        </div>
+        <Question label="Övrigt om inköpet">
           <Textarea rows={2} value={f.notes} onChange={set('notes')} />
-        </Field>
-      </section>
+        </Question>
+      </Section>
 
-      <div className="rounded-xl bg-ice px-4 py-3 text-sm">
-        <div className="flex justify-between"><span>Summa före rabatt</span><span className="tabular-nums">{kr(totals.gross)}</span></div>
-        <div className="flex justify-between text-emerald-700"><span>Rabatt</span><span className="tabular-nums">−{kr(totals.discount)}</span></div>
-        <div className="mt-1 flex justify-between border-t border-slate-300/60 pt-1 font-semibold text-ink"><span>Att betala</span><span className="tabular-nums">{kr(totals.total)}</span></div>
-      </div>
+      <section aria-label="Summering" className="rounded-2xl bg-ice px-4 py-4 sm:px-5">
+        <dl className="space-y-1 text-base">
+          <div className="flex justify-between gap-4">
+            <dt>
+              {parsed.length} {parsed.length === 1 ? 'produkt' : 'produkter'}
+            </dt>
+            <dd className="tabular-nums">{kr(totals.gross)}</dd>
+          </div>
+          {totals.discount > 0 && (
+            <div className="flex justify-between gap-4 text-emerald-800">
+              <dt>Rabatt</dt>
+              <dd className="tabular-nums">−{kr(totals.discount)}</dd>
+            </div>
+          )}
+          <div className="mt-2 flex items-baseline justify-between gap-4 border-t border-ink/15 pt-2 text-ink">
+            <dt className="font-semibold">Att betala</dt>
+            <dd className="text-2xl font-semibold tabular-nums">{kr(totals.total)}</dd>
+          </div>
+        </dl>
+      </section>
 
       <ErrorText>{err}</ErrorText>
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="secondary" onClick={onDone}>
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <Button type="button" variant="ghost" onClick={() => onDone(false)}>
           Avbryt
         </Button>
         <Button type="submit" loading={busy}>

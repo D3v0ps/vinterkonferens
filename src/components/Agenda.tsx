@@ -1,6 +1,6 @@
-// Delade byggstenar för besökarsidorna: dagväljare, programlista och anslag.
-import { useMemo, useState } from 'react'
-import { CheckCircle2, Clock, MapPin, Mic, Music, Star, User } from 'lucide-react'
+// Delade byggstenar för besökarsidorna: sidrubrik, dagväljare, programlista och anslag.
+import { useId, useMemo, useState } from 'react'
+import { Check, Clock, MapPin, Music, Pin, Star } from 'lucide-react'
 import { useConference } from '../lib/conference'
 import { tr } from '../lib/format'
 import { useList, useNow } from '../lib/hooks'
@@ -8,7 +8,36 @@ import { useI18n } from '../lib/i18n'
 import { localDate, localTime, minutesBetween, relMinutes, sessionProgress, sessionStatus, weekdayShort } from '../lib/time'
 import type { Audience, ConferenceDay, Post, PostPage, Session } from '../lib/types'
 import FeedbackDialog, { useRated } from './FeedbackDialog'
-import { Badge, Card, Empty, cx } from './ui'
+import { Button, Empty, cx } from './ui'
+
+const ARABIC_SCRIPT = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/
+
+/**
+ * Sätter sista ordet i Instrument Serif kursiv – ett ord per rubrik, aldrig mer.
+ * Arabisk skrift lämnas i sitt eget typsnitt.
+ */
+export function DisplayLast({ text }: { text: string }) {
+  const m = text.trim().match(/^([\s\S]*\s)?(\S+)$/)
+  if (!m || ARABIC_SCRIPT.test(m[2])) return <>{text}</>
+  return (
+    <>
+      {m[1] ?? ''}
+      <em className="font-display text-[1.12em] font-normal tracking-normal italic">{m[2]}</em>
+    </>
+  )
+}
+
+/** Sidans rubrik och ingress på besökarsidorna. */
+export function PageTitle({ title, lead }: { title: string; lead?: string }) {
+  return (
+    <header className="mb-7">
+      <h1 className="text-[2rem] leading-tight font-semibold tracking-tight text-ink sm:text-4xl">
+        <DisplayLast text={title} />
+      </h1>
+      {lead && <p className="mt-1.5 max-w-[60ch] text-lg text-muted">{lead}</p>}
+    </header>
+  )
+}
 
 /** Vald dag (standard: idag, annars nästa konferensdag). */
 export function useSelectedDay() {
@@ -23,19 +52,31 @@ export function DayTabs({ days, value, onChange }: { days: ConferenceDay[]; valu
   const { today } = useConference()
   if (days.length < 2) return null
   return (
-    <div className="no-print mb-4 grid gap-1.5 rounded-2xl bg-slate-200/60 p-1" style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }} role="tablist" aria-label={t.chooseDay}>
-      {days.map((d) => (
-        <button
-          key={d.id}
-          role="tab"
-          aria-selected={value === d.date}
-          onClick={() => onChange(d.date)}
-          className={cx('rounded-xl px-2 py-2 text-sm font-semibold first-letter:uppercase', value === d.date ? 'bg-white text-ink shadow-sm' : 'text-slate-600')}
-        >
-          {d.date === today ? t.today : weekdayShort(d.date, lang)}
-          <span className="block text-[11px] font-normal text-slate-500">{tr(d.label, lang)}</span>
-        </button>
-      ))}
+    <div
+      className="no-print mb-6 grid gap-1 rounded-2xl bg-ice p-1"
+      style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }}
+      role="tablist"
+      aria-label={t.chooseDay}
+    >
+      {days.map((d) => {
+        const on = value === d.date
+        return (
+          <button
+            key={d.id}
+            type="button"
+            role="tab"
+            aria-selected={on}
+            onClick={() => onChange(d.date)}
+            className={cx(
+              'flex min-h-14 flex-col items-center justify-center rounded-xl px-2 py-1.5 leading-tight transition-colors',
+              on ? 'bg-white text-ink shadow-sm' : 'text-muted hover:text-ink',
+            )}
+          >
+            <span className="text-base font-semibold first-letter:uppercase">{d.date === today ? t.today : weekdayShort(d.date, lang)}</span>
+            {tr(d.label, lang) && <span className="mt-0.5 max-w-full truncate text-sm text-muted">{tr(d.label, lang)}</span>}
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -50,8 +91,22 @@ export function useDaySessions(date: string | null, audiences: Audience[]) {
   return { sessions: list, loading }
 }
 
-const kindIcon = { preshow: Music, lecture: Mic } as const
+function LiveDot() {
+  return <span className="inline-block size-2.5 shrink-0 rounded-full bg-accent" aria-hidden />
+}
 
+function Progress({ value }: { value: number }) {
+  return (
+    <div className="mt-3 h-1 overflow-hidden rounded-full bg-line" dir="ltr" aria-hidden>
+      <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${value * 100}%` }} />
+    </div>
+  )
+}
+
+/**
+ * Programmet som en tryckt programlista: tid till vänster, titel, talare och sal som metadata.
+ * Det som varit stryks över, det som pågår markeras med signalfärgen och nästa föreläsning får en etikett.
+ */
 export function Agenda({ sessions, showFeedback = true }: { sessions: Session[]; showFeedback?: boolean }) {
   const { t, lang } = useI18n()
   const at = useNow(15_000)
@@ -63,70 +118,77 @@ export function Agenda({ sessions, showFeedback = true }: { sessions: Session[];
 
   return (
     <>
-      <ol className="space-y-2.5">
+      <ol className="divide-y divide-line border-y border-line">
         {sessions.map((s) => {
           const st = sessionStatus(s, at)
-          const canRate = showFeedback && s.kind === 'lecture' && s.feedback_enabled && st === 'done'
-          const Icon = kindIcon[s.kind as keyof typeof kindIcon]
+          const done = st === 'done'
+          const ongoing = st === 'ongoing'
+          const isNext = s.id === nextId
+          const canRate = showFeedback && s.kind === 'lecture' && s.feedback_enabled && done
           const minor = s.kind === 'preshow' || s.kind === 'break' || s.kind === 'meal'
+          const description = tr(s.description, lang)
+          const hasMeta = !!(s.speaker || s.room || s.kind === 'preshow')
           return (
-            <li key={s.id}>
-              <Card
-                className={cx(
-                  'flex gap-3 p-3.5',
-                  st === 'done' && 'bg-slate-50 opacity-70',
-                  st === 'ongoing' && 'border-accent ring-2 ring-accent/30',
-                  s.id === nextId && 'border-ink-soft',
-                  minor && st !== 'ongoing' && 'border-dashed shadow-none',
+            <li key={s.id} className={cx('flex gap-4', minor ? 'py-3.5' : 'py-4')} aria-current={ongoing ? 'true' : undefined}>
+              {/* Tidskolumn */}
+              <div className="w-14 shrink-0 tabular-nums">
+                <p className={cx('text-base font-semibold', done ? 'text-muted' : ongoing ? 'text-accent-strong' : 'text-ink')}>
+                  <span dir="ltr">{localTime(s.starts_at)}</span>
+                </p>
+                <p className="text-sm text-muted">
+                  <span dir="ltr">{localTime(s.ends_at)}</span>
+                </p>
+              </div>
+
+              <div className="min-w-0 flex-1">
+                {ongoing && (
+                  <p className="mb-0.5 flex items-center gap-2 text-base font-medium text-accent-strong">
+                    <LiveDot /> {t.now}
+                  </p>
                 )}
-              >
-                <div className="w-14 shrink-0 text-center tabular-nums" dir="ltr">
-                  <div className={cx('text-base font-bold', st === 'done' ? 'text-slate-400 line-through' : 'text-ink')}>{localTime(s.starts_at)}</div>
-                  <div className="text-xs text-slate-500">{localTime(s.ends_at)}</div>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {st === 'ongoing' && <Badge tone="accent">● {t.now}</Badge>}
-                    {s.id === nextId && <Badge tone="blue">{t.next} · {relMinutes(minutesBetween(at, s.starts_at), lang)}</Badge>}
-                    {st === 'done' && (
-                      <Badge>
-                        <CheckCircle2 className="size-3" /> {t.done}
-                      </Badge>
-                    )}
-                    {s.kind === 'preshow' && <Badge tone="violet">{t.preshow}</Badge>}
-                  </div>
-                  <h3 className={cx('mt-1 font-semibold leading-snug', minor ? 'text-sm' : 'text-base', st === 'done' ? 'text-slate-500 line-through' : 'text-slate-900')}>
-                    {Icon && <Icon className="me-1 inline size-4 -translate-y-px text-slate-400" />}
-                    {tr(s.title, lang)}
-                  </h3>
-                  {tr(s.description, lang) && st !== 'done' && <p className="mt-0.5 text-sm text-slate-600">{tr(s.description, lang)}</p>}
-                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-500">
-                    {s.speaker && (
-                      <span className="inline-flex items-center gap-1">
-                        <User className="size-3" /> {s.speaker}
+                {isNext && (
+                  <p className="mb-0.5 text-base font-medium text-ink">
+                    {t.next} · {relMinutes(minutesBetween(at, s.starts_at), lang)}
+                  </p>
+                )}
+                <h3
+                  className={cx(
+                    'leading-snug',
+                    minor ? 'text-base font-medium' : 'text-lg font-semibold',
+                    done ? 'text-muted line-through decoration-1' : minor ? 'text-ink-soft' : 'text-ink',
+                  )}
+                >
+                  {done && <span className="sr-only">{t.done}: </span>}
+                  {tr(s.title, lang)}
+                </h3>
+                {description && !done && <p className="mt-1 text-base text-muted">{description}</p>}
+                {hasMeta && (
+                  <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-base text-muted">
+                    {s.kind === 'preshow' && (
+                      <span className="inline-flex items-center gap-1.5">
+                        <Music className="size-4" aria-hidden /> {t.preshow}
                       </span>
                     )}
+                    {s.speaker && <span>{s.speaker}</span>}
                     {s.room && (
                       <span className="inline-flex items-center gap-1">
-                        <MapPin className="size-3" /> {s.room}
+                        <MapPin className="size-4" aria-hidden /> {s.room}
                       </span>
                     )}
-                  </div>
-                  {st === 'ongoing' && (
-                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100" dir="ltr">
-                      <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${sessionProgress(s, at) * 100}%` }} />
-                    </div>
-                  )}
-                  {canRate &&
-                    (isRated(s.id) ? (
-                      <p className="mt-2 text-xs font-medium text-emerald-700">✓ {t.rated}</p>
-                    ) : (
-                      <button onClick={() => setRating(s)} className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-amber-100 px-3 py-1.5 text-sm font-semibold text-amber-900">
-                        <Star className="size-4 fill-amber-400 text-amber-500" /> {t.rate}
-                      </button>
-                    ))}
-                </div>
-              </Card>
+                  </p>
+                )}
+                {ongoing && <Progress value={sessionProgress(s, at)} />}
+                {canRate &&
+                  (isRated(s.id) ? (
+                    <p className="mt-2 inline-flex items-center gap-1.5 text-base text-emerald-800">
+                      <Check className="size-4" aria-hidden /> {t.rated}
+                    </p>
+                  ) : (
+                    <Button variant="secondary" className="mt-3" onClick={() => setRating(s)}>
+                      <Star className="size-5 fill-amber-400 text-amber-500" aria-hidden /> {t.rate}
+                    </Button>
+                  ))}
+              </div>
             </li>
           )
         })}
@@ -136,12 +198,13 @@ export function Agenda({ sessions, showFeedback = true }: { sessions: Session[];
   )
 }
 
-/** Stor ruta överst: vad pågår nu / vad är nästa, plus uppmaning att betygsätta det som just tog slut. */
+/** Nu & nästa: vad pågår, vad kommer härnäst, plus en uppmaning att betygsätta det som just tog slut. */
 export function NowNext({ sessions }: { sessions: Session[] }) {
   const { t, lang } = useI18n()
   const at = useNow(15_000)
   const { isRated, markRated } = useRated()
   const [rating, setRating] = useState<Session | null>(null)
+  const headingId = useId()
   const lectures = sessions.filter((s) => s.kind === 'lecture')
   if (!lectures.length) return null
   const ongoing = lectures.find((s) => sessionStatus(s, at) === 'ongoing')
@@ -150,67 +213,90 @@ export function NowNext({ sessions }: { sessions: Session[] }) {
     .reverse()
     .find((s) => sessionStatus(s, at) === 'done' && s.feedback_enabled && minutesBetween(s.ends_at, at) <= 45 && !isRated(s.id))
   const preshow = next && sessions.find((s) => s.kind === 'preshow' && s.ends_at <= next.starts_at && minutesBetween(s.ends_at, next.starts_at) <= 15)
+  const allDone = !ongoing && !next && lectures.every((s) => sessionStatus(s, at) === 'done')
 
   return (
-    <div className="mb-5 space-y-2.5">
+    <section className="mb-10" aria-labelledby={headingId}>
+      <h2 id={headingId} className="mb-3 text-xl font-semibold text-ink">
+        {t.nowNext}
+      </h2>
+
       {justEnded && (
-        <button onClick={() => setRating(justEnded)} className="flex w-full items-center gap-3 rounded-2xl bg-amber-100 p-3.5 text-start">
-          <Star className="size-8 shrink-0 fill-amber-400 text-amber-500" />
-          <span className="min-w-0 flex-1">
-            <span className="block text-xs font-medium text-amber-900">{t.justEnded}</span>
-            <span className="block truncate font-semibold text-amber-950">{tr(justEnded.title, lang)}</span>
-          </span>
-          <span className="rounded-xl bg-amber-500 px-3 py-2 text-sm font-bold text-white">{t.rate}</span>
-        </button>
-      )}
-      {ongoing && (
-        <Card className="border-accent bg-accent-soft p-4">
-          <div className="text-xs font-bold uppercase tracking-wide text-accent">● {t.now}</div>
-          <div className="mt-1 text-lg font-bold text-ink">{tr(ongoing.title, lang)}</div>
-          <div className="text-sm text-slate-600">
-            {ongoing.speaker && `${ongoing.speaker} · `}
-            {t.ongoingUntil} <span dir="ltr">{localTime(ongoing.ends_at)}</span>
+        <div className="mb-4 flex items-center gap-3 rounded-2xl bg-ice p-4">
+          <Star className="size-6 shrink-0 fill-amber-400 text-amber-500" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="text-base text-muted">{t.justEnded}</p>
+            <p className="truncate text-base font-semibold text-ink">{tr(justEnded.title, lang)}</p>
           </div>
-        </Card>
+          <Button className="shrink-0" onClick={() => setRating(justEnded)}>
+            {t.rate}
+          </Button>
+        </div>
       )}
-      {next ? (
-        <Card className="bg-ink p-4 text-white">
-          <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-white/70">
-            <Clock className="size-3.5" /> {t.nextLecture} · {relMinutes(minutesBetween(at, next.starts_at), lang)}
+
+      <div className="divide-y divide-line border-y border-line">
+        {ongoing && (
+          <div className="py-4">
+            <p className="flex items-center gap-2 text-base font-medium text-accent-strong">
+              <LiveDot /> {t.now}
+            </p>
+            <p className="mt-1 text-xl leading-snug font-semibold text-ink">{tr(ongoing.title, lang)}</p>
+            <p className="mt-0.5 text-base text-muted">
+              {ongoing.speaker && `${ongoing.speaker} · `}
+              {t.ongoingUntil} <span dir="ltr">{localTime(ongoing.ends_at)}</span>
+              {ongoing.room && ` · ${ongoing.room}`}
+            </p>
+            <Progress value={sessionProgress(ongoing, at)} />
           </div>
-          <div className="mt-1 text-lg font-bold">{tr(next.title, lang)}</div>
-          <div className="text-sm text-white/75">
-            <span dir="ltr">{localTime(next.starts_at)}</span>
-            {next.speaker && ` · ${next.speaker}`}
-            {next.room && ` · ${next.room}`}
+        )}
+        {next && (
+          <div className="py-4">
+            <p className="flex items-center gap-2 text-base font-medium text-ink">
+              <Clock className="size-4 shrink-0" aria-hidden /> {t.nextLecture} · {relMinutes(minutesBetween(at, next.starts_at), lang)}
+            </p>
+            <p className="mt-1 text-xl leading-snug font-semibold text-ink">{tr(next.title, lang)}</p>
+            <p className="mt-0.5 text-base text-muted">
+              <span dir="ltr">{localTime(next.starts_at)}</span>
+              {next.speaker && ` · ${next.speaker}`}
+              {next.room && ` · ${next.room}`}
+            </p>
+            {preshow && sessionStatus(preshow, at) !== 'done' && (
+              <p className="mt-2 flex items-center gap-1.5 text-base text-muted">
+                <Music className="size-4 shrink-0" aria-hidden /> <span dir="ltr">{localTime(preshow.starts_at)}</span> · {tr(preshow.title, lang)}
+              </p>
+            )}
           </div>
-          {preshow && sessionStatus(preshow, at) !== 'done' && (
-            <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-2.5 py-1 text-xs">
-              <Music className="size-3.5" /> <span dir="ltr">{localTime(preshow.starts_at)}</span> · {tr(preshow.title, lang)}
-            </div>
-          )}
-        </Card>
-      ) : (
-        !ongoing && lectures.every((s) => sessionStatus(s, at) === 'done') && <Card className="p-4 text-center text-sm text-slate-600">{t.noMoreToday}</Card>
-      )}
+        )}
+        {allDone && <p className="py-4 text-base text-muted">{t.noMoreToday}</p>}
+      </div>
       <FeedbackDialog session={rating} onClose={() => setRating(null)} onDone={markRated} />
-    </div>
+    </section>
   )
 }
 
-/** Externa anslag för en viss sida. */
+/** Externa anslag för en viss sida. Fästa anslag ligger först och får en ljus platta. */
 export function PostsList({ page }: { page: PostPage }) {
-  const { lang } = useI18n()
+  const { t, lang } = useI18n()
   const { data } = useList('posts', { filters: [{ col: 'audience', op: 'eq', value: 'external' }, { col: 'published', op: 'eq', value: true }, { col: 'page', op: 'eq', value: page }] }, { pollMs: 120_000 })
   const posts = [...data].sort((a: Post, b: Post) => Number(b.pinned) - Number(a.pinned) || b.created_at.localeCompare(a.created_at))
   if (!posts.length) return null
   return (
-    <div className="mb-5 space-y-2.5">
+    <div className="mb-8 space-y-3">
       {posts.map((p) => (
-        <Card key={p.id} className={cx('p-4', p.pinned && 'border-sky-200 bg-sky-50')}>
-          {tr(p.title, lang) && <h3 className="font-semibold text-ink">{tr(p.title, lang)}</h3>}
-          {tr(p.body, lang) && <p className="mt-1 whitespace-pre-line text-sm text-slate-700">{tr(p.body, lang)}</p>}
-        </Card>
+        <article key={p.id} className={cx('rounded-2xl px-4 py-4', p.pinned ? 'bg-ice' : 'border border-line bg-white')}>
+          {tr(p.title, lang) && (
+            <h2 className="flex items-start gap-2 text-lg leading-snug font-semibold text-ink">
+              {p.pinned && (
+                <>
+                  <Pin className="mt-1 size-4 shrink-0 text-ink-soft" aria-hidden />
+                  <span className="sr-only">{t.pinned}: </span>
+                </>
+              )}
+              <span className="min-w-0">{tr(p.title, lang)}</span>
+            </h2>
+          )}
+          {tr(p.body, lang) && <p className={cx('whitespace-pre-line text-base', tr(p.title, lang) && 'mt-1')}>{tr(p.body, lang)}</p>}
+        </article>
       ))}
     </div>
   )

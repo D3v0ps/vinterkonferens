@@ -71,7 +71,10 @@ export function ShiftEditor({
     set('volunteer_ids', d.volunteer_ids.includes(id) ? d.volunteer_ids.filter((x) => x !== id) : [...d.volunteer_ids, id])
 
   async function save() {
-    if (!d.title.trim() || !d.date || !d.start_time || !d.end_time) return setErr('Fyll i dag, tider och uppgift.')
+    if (!d.date) return setErr('Välj vilken dag passet är.')
+    if (!d.start_time || !d.end_time) return setErr('Fyll i när passet börjar och slutar.')
+    if (d.start_time.slice(0, 5) === d.end_time.slice(0, 5)) return setErr('Passet måste sluta en annan tid än det börjar.')
+    if (!d.title.trim()) return setErr('Skriv vad uppgiften är, t.ex. Lunchservering.')
     setBusy(true)
     setErr(null)
     const row = {
@@ -99,7 +102,7 @@ export function ShiftEditor({
 
   return (
     <Modal open={open} onClose={onClose} title={d.id ? 'Redigera pass' : 'Nytt pass'} wide>
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-5 sm:grid-cols-3">
         <Field label="Dag" required>
           <Select value={d.date} onChange={(e) => set('date', e.target.value)}>
             {dayOptions.map((date) => (
@@ -112,7 +115,7 @@ export function ShiftEditor({
         <Field label="Start" required>
           <Input type="time" value={d.start_time} onChange={(e) => set('start_time', e.target.value)} />
         </Field>
-        <Field label="Slut" required>
+        <Field label="Slut" required hint="Slutar passet efter midnatt räknas det till nästa dygn.">
           <Input type="time" value={d.end_time} onChange={(e) => set('end_time', e.target.value)} />
         </Field>
         <Field label="Uppgift" required className="sm:col-span-2">
@@ -126,24 +129,26 @@ export function ShiftEditor({
         </Field>
       </div>
 
-      <div className="mt-5">
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-sm font-medium text-slate-700">
+      <div className="mt-6">
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-x-4">
+          <span id="shift-volunteers" className="text-base font-medium text-slate-800">
             Volontärer på passet ({d.volunteer_ids.length})
           </span>
-          <div className="flex gap-2 text-xs">
-            <button type="button" className="text-ink underline" onClick={() => set('volunteer_ids', volunteers.map((v) => v.id))}>
-              Alla
-            </button>
-            <button type="button" className="text-ink underline" onClick={() => set('volunteer_ids', [])}>
-              Inga
-            </button>
-          </div>
+          {volunteers.length > 0 && (
+            <div className="flex gap-4 text-base">
+              <button type="button" className="min-h-11 text-ink underline underline-offset-4" onClick={() => set('volunteer_ids', volunteers.map((v) => v.id))}>
+                Välj alla
+              </button>
+              <button type="button" className="min-h-11 text-ink underline underline-offset-4" onClick={() => set('volunteer_ids', [])}>
+                Välj inga
+              </button>
+            </div>
+          )}
         </div>
         {volunteers.length === 0 ? (
-          <p className="text-sm text-slate-500">Lägg först till volontärer under fliken Volontärer.</p>
+          <p className="text-base text-muted">Lägg först till volontärer under fliken Volontärer.</p>
         ) : (
-          <div className="grid gap-2 rounded-xl border border-slate-200 p-3 sm:grid-cols-2">
+          <div role="group" aria-labelledby="shift-volunteers" className="grid gap-x-4 border-y border-line py-2 sm:grid-cols-2">
             {volunteers.map((v) => (
               <Checkbox key={v.id} label={v.full_name} checked={d.volunteer_ids.includes(v.id)} onChange={() => toggle(v.id)} />
             ))}
@@ -151,10 +156,10 @@ export function ShiftEditor({
         )}
       </div>
 
-      <div className="mt-5 space-y-3">
+      <div className="mt-6 space-y-3">
         <ErrorText>{err}</ErrorText>
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose}>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>
             Avbryt
           </Button>
           <Button onClick={save} loading={busy}>

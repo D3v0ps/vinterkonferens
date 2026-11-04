@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Check, Download, Star, TriangleAlert } from 'lucide-react'
-import { Badge, Button, Card, Empty, PageHeader, Spinner, StatTile, Tabs } from '../../components/ui'
-import { ColumnChart, Meter, SegmentedBar, type Column } from '../../components/stats/charts'
+import { Badge, Button, Empty, PageHeader, Spinner, Tabs } from '../../components/ui'
+import { ColumnChart, KeyFigures, Meter, SegmentedBar, type Column } from '../../components/stats/charts'
 import { CHECKPOINT_LABEL, KITCHEN_CATS, catLabel, minuteOfDay } from '../../components/stats/labels'
 import { useConference } from '../../lib/conference'
 import { where } from '../../lib/db'
@@ -29,61 +29,70 @@ export default function Stats() {
   const title = (id: string | null) => tr(sessions.data.find((s) => s.id === id)?.title, 'sv')
   const lectures = sessions.data.filter((s) => s.kind === 'lecture' && localDate(s.starts_at) === selected)
 
+  // Nedladdningar längst ner på sidan, så att sidhuvudet bara har rubriken
   const exports = (
-    <>
-      <Button
-        variant="secondary"
-        size="sm"
-        disabled={!counts.data.length}
-        onClick={() =>
-          downloadCsv(
-            'rakningar.csv',
-            ['Datum', 'Tid', 'Område', 'Föreläsning', 'Räknepunkt', 'Antal', 'Anteckning', 'Räknad av'],
-            counts.data.map((c) => [localDate(c.counted_at), localTime(c.counted_at), c.area === 'hall' ? 'Salen' : 'Köket', title(c.session_id), CHECKPOINT_LABEL[c.checkpoint], c.count, c.note, c.author_name]),
-          )
-        }
-      >
-        <Download className="size-4" /> Räkningar
-      </Button>
-      <Button
-        variant="secondary"
-        size="sm"
-        disabled={!events.data.length}
-        onClick={() =>
-          downloadCsv(
-            `koksflode-${selected}.csv`,
-            ['Datum', 'Tid', 'Kategori', 'Antal', 'Registrerad av'],
-            events.data.map((e) => [localDate(e.occurred_at), localTime(e.occurred_at), catLabel(e.category), e.quantity, e.author_name]),
-          )
-        }
-      >
-        <Download className="size-4" /> Köksflöde (dagen)
-      </Button>
-      <Button
-        variant="secondary"
-        size="sm"
-        disabled={!feedback.data.length}
-        onClick={() =>
-          downloadCsv(
-            'betyg.csv',
-            ['Datum', 'Tid', 'Föreläsning', 'Stjärnor', 'Relevant', 'Längd', 'Ankomst', 'Kommentar', 'Språk'],
-            feedback.data.map((f) => [
-              localDate(f.created_at), localTime(f.created_at), title(f.session_id), f.rating,
-              answerLabel('relevance', f.answers.relevance), answerLabel('length', f.answers.length), answerLabel('arrival', f.answers.arrival),
-              f.comment, f.lang,
-            ]),
-          )
-        }
-      >
-        <Download className="size-4" /> Betyg
-      </Button>
-    </>
+    <section className="mt-12 border-t border-line pt-6">
+      <h2 className="text-xl font-semibold text-ink">Ladda ner</h2>
+      <p className="mt-1 text-base text-muted">CSV-filer som öppnas direkt i Excel eller Numbers.</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button
+          variant="secondary"
+          disabled={!counts.data.length}
+          onClick={() =>
+            downloadCsv(
+              'rakningar.csv',
+              ['Datum', 'Tid', 'Område', 'Föreläsning', 'Räknepunkt', 'Antal', 'Anteckning', 'Räknad av'],
+              counts.data.map((c) => [localDate(c.counted_at), localTime(c.counted_at), c.area === 'hall' ? 'Salen' : 'Köket', title(c.session_id), CHECKPOINT_LABEL[c.checkpoint], c.count, c.note, c.author_name]),
+            )
+          }
+        >
+          <Download className="size-4" aria-hidden /> Alla räkningar
+        </Button>
+        <Button
+          variant="secondary"
+          disabled={!events.data.length}
+          onClick={() =>
+            downloadCsv(
+              `koksflode-${selected}.csv`,
+              ['Datum', 'Tid', 'Kategori', 'Antal', 'Registrerad av'],
+              events.data.map((e) => [localDate(e.occurred_at), localTime(e.occurred_at), catLabel(e.category), e.quantity, e.author_name]),
+            )
+          }
+        >
+          <Download className="size-4" aria-hidden /> Köksflödet {weekdayShort(selected)} {selected.slice(5)}
+        </Button>
+        <Button
+          variant="secondary"
+          disabled={!feedback.data.length}
+          onClick={() =>
+            downloadCsv(
+              'betyg.csv',
+              ['Datum', 'Tid', 'Föreläsning', 'Stjärnor', 'Relevant', 'Längd', 'Ankomst', 'Kommentar', 'Språk'],
+              feedback.data.map((f) => [
+                localDate(f.created_at), localTime(f.created_at), title(f.session_id), f.rating,
+                answerLabel('relevance', f.answers.relevance), answerLabel('length', f.answers.length), answerLabel('arrival', f.answers.arrival),
+                f.comment, f.lang,
+              ]),
+            )
+          }
+        >
+          <Download className="size-4" aria-hidden /> Alla betyg
+        </Button>
+      </div>
+    </section>
   )
 
   return (
     <>
-      <PageHeader title="Statistik & betyg" subtitle="Publikflöde, köksflöde och besökarnas betyg – per dag." actions={exports} />
-      <div className="mb-5 flex flex-wrap items-center gap-2">
+      <PageHeader
+        title={
+          <>
+            Statistik & <em className="font-display font-normal italic">betyg</em>
+          </>
+        }
+        subtitle="Publikflöde, köksflöde och besökarnas betyg, dag för dag."
+      />
+      <div className="mb-8 flex flex-wrap items-center gap-2">
         <Tabs
           value={tab}
           onChange={setTab}
@@ -106,6 +115,7 @@ export default function Stats() {
       ) : (
         <Ratings lectures={lectures} feedback={feedback.data} />
       )}
+      {exports}
     </>
   )
 }
@@ -138,70 +148,74 @@ function Audience({ lectures, counts, feedback }: { lectures: Session[]; counts:
   const lateAll = rows.reduce((a, r) => a + (r.lateShare ?? 0) * r.nArr, 0)
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatTile label="Fyllnad 5 min efter start" value={fill('start_plus_5')} sub="snitt av salens kapacitet" />
-        <StatTile label="Fyllnad vid mittpunkt" value={fill('midpoint')} />
-        <StatTile label="Fyllnad 5 min före slut" value={fill('end_minus_5')} />
-        <StatTile label="Publiken kom sent" value={judged.length ? `${lateN} av ${judged.length}` : '–'} sub="föreläsningar" />
-      </div>
+    <div className="space-y-8">
+      <KeyFigures
+        items={[
+          { label: 'Fyllnad 5 min efter start', value: fill('start_plus_5'), sub: 'snitt av salens kapacitet' },
+          { label: 'Fyllnad vid mittpunkt', value: fill('midpoint') },
+          { label: 'Fyllnad 5 min före slut', value: fill('end_minus_5') },
+          { label: 'Publiken kom sent', value: judged.length ? `${lateN} av ${judged.length}` : '–', sub: 'föreläsningar' },
+        ]}
+      />
 
       {lateN > 0 && (
-        <Card className="flex gap-3 border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-          <TriangleAlert className="size-5 shrink-0 text-amber-600" aria-hidden />
-          <div>
-            <b>Publiken kommer sent på {lateN} av {judged.length} föreläsningar.</b> Överväg ett förprogram (t.ex. poesi) 15 min innan och börja
-            skjutsa in folk tidigare.
+        <div className="flex gap-3 rounded-xl bg-amber-50 px-4 py-3 text-base text-amber-950">
+          <TriangleAlert className="mt-0.5 size-5 shrink-0 text-amber-700" aria-hidden />
+          <p>
+            <b className="font-semibold">Publiken kommer sent på {lateN} av {judged.length} föreläsningar.</b> Prova ett förprogram, t.ex. poesi, 15
+            minuter innan och börja visa in folk tidigare.
             {arrivals > 0 && ` I betygsformuläret svarade ${pct(lateAll / arrivals)} att de kom efter start.`}
-          </div>
-        </Card>
+          </p>
+        </div>
       )}
 
-      {rows.map((r) => (
-        <Card key={r.s.id} className="p-4">
-          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-            <div>
-              <div className="text-xs font-semibold text-slate-500 tabular-nums">
-                {localTime(r.s.starts_at)}–{localTime(r.s.ends_at)}
-                {r.s.capacity ? ` · kapacitet ${r.s.capacity}` : ''}
+      <div className="divide-y divide-line border-y border-line">
+        {rows.map((r) => (
+          <section key={r.s.id} className="py-6">
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-sm text-muted tabular-nums">
+                  {localTime(r.s.starts_at)}–{localTime(r.s.ends_at)}
+                  {r.s.capacity ? ` · ${r.s.capacity} platser` : ''}
+                </p>
+                <h2 className="text-lg font-semibold text-ink">{tr(r.s.title, 'sv')}</h2>
               </div>
-              <h2 className="font-semibold text-ink">{tr(r.s.title, 'sv')}</h2>
+              {r.late ? (
+                <Badge tone="amber">
+                  <TriangleAlert className="size-3.5" aria-hidden /> Publiken kom sent
+                </Badge>
+              ) : r.late === false ? (
+                <Badge tone="green">
+                  <Check className="size-3.5" aria-hidden /> På plats i tid
+                </Badge>
+              ) : null}
             </div>
-            {r.late ? (
-              <Badge tone="amber">
-                <TriangleAlert className="size-3" /> Publiken kom sent
-              </Badge>
-            ) : r.late === false ? (
-              <Badge tone="green">
-                <Check className="size-3" /> På plats i tid
-              </Badge>
-            ) : null}
-          </div>
-          <div className="grid gap-3 sm:grid-cols-3">
-            {MAIN.map((k) => (
-              <div key={k}>
-                <div className="flex items-baseline justify-between text-xs text-slate-600">
-                  <span>{CHECKPOINT_LABEL[k]}</span>
-                  {r.c[k] != null && r.s.capacity ? <span className="tabular-nums">{pct(r.c[k]! / r.s.capacity)}</span> : null}
+            <div className="grid gap-4 sm:grid-cols-3">
+              {MAIN.map((k) => (
+                <div key={k}>
+                  <div className="flex items-baseline justify-between gap-2 text-sm text-muted">
+                    <span>{CHECKPOINT_LABEL[k]}</span>
+                    {r.c[k] != null && r.s.capacity ? <span className="tabular-nums">{pct(r.c[k]! / r.s.capacity)}</span> : null}
+                  </div>
+                  <div className="my-1 text-2xl font-semibold tabular-nums text-ink">{r.c[k] ?? '–'}</div>
+                  {r.c[k] != null && r.ref > 0 && <Meter value={r.c[k]!} max={r.ref} label={`${CHECKPOINT_LABEL[k]}: ${r.c[k]} av ${r.ref}`} />}
                 </div>
-                <div className="my-1 text-xl font-bold text-ink">{r.c[k] ?? '–'}</div>
-                {r.c[k] != null && r.ref > 0 && <Meter value={r.c[k]!} max={r.ref} label={`${CHECKPOINT_LABEL[k]}: ${r.c[k]} av ${r.ref}`} />}
-              </div>
-            ))}
-          </div>
-          {(r.late || r.early || r.lateShare != null) && (
-            <ul className="mt-3 space-y-0.5 text-sm text-slate-600">
-              {r.late && <li>Publiken kommer sent – överväg förprogram (t.ex. poesi) 15 min innan och börja skjutsa in folk tidigare.</li>}
-              {r.early && <li>Publiken lämnade innan slutet – se över längden eller avslutningen.</li>}
-              {r.lateShare != null && (
-                <li>
-                  {pct(r.lateShare)} av {r.nArr} som svarade kom efter start.
-                </li>
-              )}
-            </ul>
-          )}
-        </Card>
-      ))}
+              ))}
+            </div>
+            {(r.late || r.early || r.lateShare != null) && (
+              <ul className="mt-4 space-y-1 text-base text-muted">
+                {r.late && <li>Publiken kommer sent. Prova ett förprogram, t.ex. poesi, 15 minuter innan och börja visa in folk tidigare.</li>}
+                {r.early && <li>Publiken gick innan slutet. Se över längden eller avslutningen.</li>}
+                {r.lateShare != null && (
+                  <li>
+                    {pct(r.lateShare)} av {r.nArr} som svarade kom efter start.
+                  </li>
+                )}
+              </ul>
+            )}
+          </section>
+        ))}
+      </div>
     </div>
   )
 }
@@ -248,69 +262,71 @@ function KitchenStats({ events, queue }: { events: KitchenEvent[]; queue: FlowCo
   })
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-10">
       <Tabs value={cat} onChange={setCat} options={[{ value: 'all' as const, label: 'Alla' }, ...KITCHEN_CATS.map((c) => ({ value: c.key, label: c.label }))]} />
-      <Card className="p-4">
-        <h2 className="font-semibold text-ink">Per halvtimme – {cat === 'all' ? 'alla registreringar' : catLabel(cat).toLowerCase()}</h2>
-        <p className="mb-4 text-xs text-slate-500">
+      <section>
+        <h2 className="text-lg font-semibold text-ink">Per halvtimme – {cat === 'all' ? 'alla registreringar' : catLabel(cat).toLowerCase()}</h2>
+        <p className="mb-5 text-base text-muted">
           Totalt {num(series.reduce((a, b) => a + b, 0))} st mellan 09 och 20.
           {bins.outside > 0 && ` ${bins.outside} st registrerades utanför den tiden.`}
         </p>
         <ColumnChart data={data} label={`Köksflöde per halvtimme, ${cat === 'all' ? 'alla' : catLabel(cat)}`} />
-      </Card>
+      </section>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Card className="p-4">
-          <h2 className="font-semibold text-ink">Rusningstider</h2>
+      <div className="grid gap-10 border-t border-line pt-6 sm:grid-cols-2 sm:gap-8">
+        <section>
+          <h2 className="text-lg font-semibold text-ink">Rusningstider</h2>
           {top3.length ? (
-            <ol className="mt-2 space-y-1 text-sm">
+            <ol className="mt-2 divide-y divide-line text-base">
               {top3.map((x, n) => (
-                <li key={x.i} className="flex justify-between tabular-nums">
+                <li key={x.i} className="flex justify-between gap-3 py-2 tabular-nums">
                   <span>
                     {n + 1}. {slotLabel(x.i)}
                   </span>
-                  <b className="text-ink">{x.v} st</b>
+                  <b className="font-semibold text-ink">{x.v} st</b>
                 </li>
               ))}
             </ol>
           ) : (
-            <p className="mt-2 text-sm text-slate-500">Ingen data för valet.</p>
+            <p className="mt-2 text-base text-muted">Ingen data för valet.</p>
           )}
-        </Card>
-        <Card className="p-4">
-          <h2 className="font-semibold text-ink">När vill folk äta och fika?</h2>
-          <table className="mt-2 w-full text-sm">
-            <thead className="text-xs text-slate-500">
-              <tr>
-                <th className="py-1 text-start font-medium">Kategori</th>
-                <th className="py-1 text-start font-medium">Toppen</th>
-                <th className="py-1 text-end font-medium">Totalt</th>
-              </tr>
-            </thead>
-            <tbody className="tabular-nums">
-              {peaks.map((p) => (
-                <tr key={p.c.key} className="border-t border-slate-100">
-                  <td className="py-1.5">{p.c.label}</td>
-                  <td className="py-1.5">{p.total ? `${slotLabel(p.i)} (${p.max})` : '–'}</td>
-                  <td className="py-1.5 text-end">{p.total}</td>
+        </section>
+        <section className="min-w-0">
+          <h2 className="text-lg font-semibold text-ink">När vill folk äta och fika?</h2>
+          <div className="mt-2 overflow-x-auto">
+            <table className="w-full text-base">
+              <thead className="text-sm text-muted">
+                <tr>
+                  <th className="py-2 pe-3 text-start font-medium">Kategori</th>
+                  <th className="py-2 pe-3 text-start font-medium">Toppen</th>
+                  <th className="py-2 text-end font-medium">Totalt</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
+              </thead>
+              <tbody className="tabular-nums">
+                {peaks.map((p) => (
+                  <tr key={p.c.key} className="border-t border-line">
+                    <td className="py-2 pe-3">{p.c.label}</td>
+                    <td className="whitespace-nowrap py-2 pe-3">{p.total ? `${slotLabel(p.i)} (${p.max})` : '–'}</td>
+                    <td className="py-2 text-end">{p.total}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       </div>
 
       {queue.length > 0 && (
-        <Card className="p-4">
-          <h2 className="font-semibold text-ink">Kölängd</h2>
-          <ul className="mt-2 grid grid-cols-2 gap-1 text-sm sm:grid-cols-4">
+        <section className="border-t border-line pt-6">
+          <h2 className="text-lg font-semibold text-ink">Kölängd</h2>
+          <ul className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-base sm:grid-cols-4">
             {queue.map((q) => (
               <li key={q.id} className="tabular-nums">
-                kl {localTime(q.counted_at)}: <b className="text-ink">{q.count}</b>
+                <span className="text-muted">kl {localTime(q.counted_at)}:</span> <b className="font-semibold text-ink">{q.count}</b>
               </li>
             ))}
           </ul>
-        </Card>
+        </section>
       )}
     </div>
   )
@@ -340,68 +356,75 @@ function Ratings({ lectures, feedback }: { lectures: Session[]; feedback: Feedba
   const rated = lectures.filter((s) => day.some((f) => f.session_id === s.id))
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <StatTile label="Snittbetyg" value={`${one(avg(day))} av 5`} />
-        <StatTile label="Antal svar" value={num(day.length)} />
-        <StatTile label="Föreläsningar med svar" value={`${rated.length} av ${lectures.length}`} />
-      </div>
-      {lectures.map((s) => {
-        const fs = day.filter((f) => f.session_id === s.id)
-        const comments = fs.filter((f) => f.comment?.trim()).slice(0, 5)
-        const dist = [5, 4, 3, 2, 1].map((n) => [n, fs.filter((f) => f.rating === n).length] as const)
-        return (
-          <Card key={s.id} className="p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <div className="text-xs font-semibold text-slate-500 tabular-nums">
-                  {localTime(s.starts_at)}–{localTime(s.ends_at)}
-                  {s.speaker && ` · ${s.speaker}`}
+    <div className="space-y-8">
+      <KeyFigures
+        items={[
+          { label: 'Snittbetyg', value: `${one(avg(day))} av 5` },
+          { label: 'Antal svar', value: num(day.length) },
+          { label: 'Föreläsningar med svar', value: `${rated.length} av ${lectures.length}` },
+        ]}
+      />
+      <div className="divide-y divide-line border-y border-line">
+        {lectures.map((s) => {
+          const fs = day.filter((f) => f.session_id === s.id)
+          const comments = fs.filter((f) => f.comment?.trim()).slice(0, 5)
+          const dist = [5, 4, 3, 2, 1].map((n) => [n, fs.filter((f) => f.rating === n).length] as const)
+          return (
+            <section key={s.id} className="py-6">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm text-muted tabular-nums">
+                    {localTime(s.starts_at)}–{localTime(s.ends_at)}
+                    {s.speaker && ` · ${s.speaker}`}
+                  </p>
+                  <h2 className="text-lg font-semibold text-ink">{tr(s.title, 'sv')}</h2>
                 </div>
-                <h2 className="font-semibold text-ink">{tr(s.title, 'sv')}</h2>
-              </div>
-              {fs.length > 0 && (
-                <div className="text-end">
-                  <div className="inline-flex items-center gap-1 text-2xl font-bold text-ink">
-                    <Star className="size-5 fill-amber-400 text-amber-400" aria-hidden /> {one(avg(fs))}
-                  </div>
-                  <div className="text-xs text-slate-500">{fs.length} svar</div>
-                </div>
-              )}
-            </div>
-            {fs.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-500">Inga svar ännu.</p>
-            ) : (
-              <>
-                <p className="mt-1 text-xs text-slate-500 tabular-nums">{dist.map(([n, c]) => `${n}★ ${c}`).join(' · ')}</p>
-                <div className="mt-3 grid gap-4 sm:grid-cols-3">
-                  {QUESTIONS.map((q) => (
-                    <div key={q.key}>
-                      <div className="mb-1.5 text-sm font-medium text-slate-700">{q.label}</div>
-                      <SegmentedBar
-                        label={q.label}
-                        parts={q.opts.map(([k, l]) => ({ key: k, label: l, value: fs.filter((f) => f.answers[q.key] === k).length }))}
-                      />
+                {fs.length > 0 && (
+                  <div className="text-end">
+                    <div className="inline-flex items-center gap-1.5 text-2xl font-semibold tabular-nums text-ink">
+                      <Star className="size-5 fill-amber-400 text-amber-400" aria-hidden /> {one(avg(fs))}
                     </div>
-                  ))}
-                </div>
-                {comments.length > 0 && (
-                  <div className="mt-4 border-t border-slate-100 pt-3">
-                    <div className="mb-1 text-sm font-medium text-slate-700">Senaste kommentarer</div>
-                    <ul className="space-y-1.5 text-sm text-slate-700">
-                      {comments.map((f) => (
-                        <li key={f.id} className="rounded-lg bg-frost px-3 py-2">
-                          “{f.comment}” <span className="text-xs text-slate-500">– {f.rating}★, {formatDateTime(f.created_at)}</span>
-                        </li>
-                      ))}
-                    </ul>
+                    <div className="text-sm text-muted">{fs.length} svar</div>
                   </div>
                 )}
-              </>
-            )}
-          </Card>
-        )
-      })}
+              </div>
+              {fs.length === 0 ? (
+                <p className="mt-2 text-base text-muted">Inga svar ännu.</p>
+              ) : (
+                <>
+                  <p className="mt-1 text-sm text-muted tabular-nums">{dist.map(([n, c]) => `${n}★ ${c}`).join(' · ')}</p>
+                  <div className="mt-4 grid gap-5 sm:grid-cols-3">
+                    {QUESTIONS.map((q) => (
+                      <div key={q.key}>
+                        <div className="mb-2 text-base font-medium text-ink">{q.label}</div>
+                        <SegmentedBar
+                          label={q.label}
+                          parts={q.opts.map(([k, l]) => ({ key: k, label: l, value: fs.filter((f) => f.answers[q.key] === k).length }))}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  {comments.length > 0 && (
+                    <div className="mt-5">
+                      <h3 className="mb-2 text-base font-medium text-ink">Senaste kommentarer</h3>
+                      <ul className="space-y-3 text-base">
+                        {comments.map((f) => (
+                          <li key={f.id} className="border-s-2 border-line ps-3">
+                            <q className="text-ink">{f.comment}</q>
+                            <span className="block text-sm text-muted">
+                              {f.rating}★ · {formatDateTime(f.created_at)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              )}
+            </section>
+          )
+        })}
+      </div>
     </div>
   )
 }

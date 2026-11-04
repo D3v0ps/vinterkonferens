@@ -18,15 +18,22 @@ export default function MySchedule() {
 
   return (
     <div>
-      <PageHeader title="Mitt schema" subtitle={`Alla pass för ${auth.displayName} i alla kommittéer.`} />
+      <PageHeader
+        title={
+          <>
+            Mitt <em className="font-display font-normal italic">schema</em>
+          </>
+        }
+        subtitle={`Alla pass för ${auth.displayName} i alla kommittéer.`}
+      />
       {mine.length === 0 ? (
-        <Empty icon={<CalendarCheck className="size-8 text-slate-300" />}>Du har inga pass inlagda ännu. Kolla med din kommittéansvarig.</Empty>
+        <Empty icon={<CalendarCheck className="size-8 text-slate-300" />}>Du har inga pass inlagda ännu. Fråga din kommittéansvarig.</Empty>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-10">
           {groupByDate(mine).map(([date, list]) => (
             <section key={date}>
-              <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">{formatDay(date)}</h2>
-              <div className="space-y-3">
+              <h2 className="text-xl font-semibold text-ink first-letter:uppercase">{formatDay(date)}</h2>
+              <ul className="mt-2 divide-y divide-line border-y border-line">
                 {list.map((s) => (
                   <ShiftItem
                     key={s.id}
@@ -35,7 +42,7 @@ export default function MySchedule() {
                     others={s.volunteer_ids.filter((id) => !myIds.has(id)).flatMap((id) => names.get(id) ?? [])}
                   />
                 ))}
-              </div>
+              </ul>
             </section>
           ))}
         </div>

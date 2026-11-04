@@ -1,11 +1,12 @@
+import { Fragment } from 'react'
 import { Clock } from 'lucide-react'
-import { PostsList } from '../../components/Agenda'
-import { Badge, Card, Empty, Spinner, cx } from '../../components/ui'
+import { PageTitle, PostsList } from '../../components/Agenda'
+import { Empty, Spinner, cx } from '../../components/ui'
 import { useConference } from '../../lib/conference'
 import { kr, tr } from '../../lib/format'
 import { useList } from '../../lib/hooks'
 import { useI18n } from '../../lib/i18n'
-import type { MenuCategory } from '../../lib/types'
+import type { MenuCategory, MenuItem } from '../../lib/types'
 
 const CATS: MenuCategory[] = ['food', 'coffee', 'drinks', 'snacks', 'dessert']
 
@@ -14,59 +15,80 @@ export default function Kitchen() {
   const { settings } = useConference()
   const { data, loading } = useList('menu_items', { order: [{ col: 'sort' }] }, { pollMs: 60_000 })
   const label = (k: string) => (t as unknown as Record<string, string>)[k] ?? k
+  const hours = tr(settings.kitchen_info, lang)
   return (
     <>
-      <h1 className="mb-1 text-2xl font-bold text-ink">{t.kitchen}</h1>
-      <p className="mb-4 text-sm text-slate-600">{t.kitchenLead}</p>
-      {tr(settings.kitchen_info, lang) && (
-        <Card className="mb-5 flex items-start gap-3 bg-accent-soft p-4">
-          <Clock className="mt-0.5 size-5 shrink-0 text-accent" />
-          <div>
-            <div className="text-sm font-semibold text-ink">{t.openingHours}</div>
-            <p className="whitespace-pre-line text-sm text-slate-700">{tr(settings.kitchen_info, lang)}</p>
+      <PageTitle title={t.kitchen} lead={t.kitchenLead} />
+      {hours && (
+        <div className="mb-8 flex gap-3 border-y border-line py-4">
+          <Clock className="mt-1 size-5 shrink-0 text-muted" aria-hidden />
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold text-ink">{t.openingHours}</h2>
+            <p className="text-base whitespace-pre-line">{hours}</p>
           </div>
-        </Card>
+        </div>
       )}
       <PostsList page="kitchen" />
       {loading ? (
         <Spinner />
       ) : !data.length ? (
-        <Empty>{t.menu}: –</Empty>
+        <Empty>{t.noMenu}</Empty>
       ) : (
-        <div className="space-y-6">
+        // Prislista: namn, prickad linje, pris. Slutsålt stryks över.
+        <div className="max-w-xl space-y-9">
           {CATS.map((c) => {
             const items = data.filter((m) => m.category === c)
             if (!items.length) return null
             return (
               <section key={c}>
-                <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-slate-500">{label(`cat_${c}`)}</h2>
-                <Card className="divide-y divide-slate-100">
+                <h2 className="border-b border-line pb-2 text-xl font-semibold text-ink">{label(`cat_${c}`)}</h2>
+                <ul className="mt-1">
                   {items.map((m) => (
-                    <div key={m.id} className={cx('flex items-start justify-between gap-3 px-4 py-3', !m.available && 'opacity-55')}>
-                      <div className="min-w-0">
-                        <div className={cx('font-medium text-slate-900', !m.available && 'line-through')}>{tr(m.name, lang)}</div>
-                        {tr(m.description, lang) && <div className="text-sm text-slate-500">{tr(m.description, lang)}</div>}
-                        {!!m.tags.length && (
-                          <div className="mt-1 flex flex-wrap gap-1">
-                            {m.tags.map((tag) => (
-                              <Badge key={tag} tone={tag === 'nuts' ? 'red' : 'green'}>
-                                {label(`tag_${tag}`)}
-                              </Badge>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <div className="shrink-0 text-end">
-                        {m.available ? <span className="font-semibold tabular-nums text-ink" dir="ltr">{m.price != null ? kr(m.price) : ''}</span> : <Badge tone="red">{t.soldOut}</Badge>}
-                      </div>
-                    </div>
+                    <PriceRow key={m.id} item={m} label={label} />
                   ))}
-                </Card>
+                </ul>
               </section>
             )
           })}
         </div>
       )}
     </>
+  )
+}
+
+function PriceRow({ item: m, label }: { item: MenuItem; label: (k: string) => string }) {
+  const { t, lang } = useI18n()
+  const sold = !m.available
+  const description = tr(m.description, lang)
+  const hasPrice = m.price != null
+  return (
+    <li className="py-3">
+      <div className="flex items-end gap-2">
+        <span className={cx('min-w-0 text-lg leading-snug font-medium', sold ? 'text-muted line-through decoration-1' : 'text-ink')}>{tr(m.name, lang)}</span>
+        {(sold || hasPrice) && (
+          <>
+            <span className="mb-[0.45em] min-w-6 flex-1 border-b-2 border-dotted border-muted/35" aria-hidden />
+            {sold ? (
+              <span className="shrink-0 text-base font-medium text-muted">{t.soldOut}</span>
+            ) : (
+              <span className="shrink-0 text-lg font-semibold tabular-nums text-ink" dir="ltr">
+                {kr(m.price)}
+              </span>
+            )}
+          </>
+        )}
+      </div>
+      {description && <p className="mt-0.5 text-base text-muted">{description}</p>}
+      {!!m.tags.length && (
+        <p className="mt-0.5 text-sm text-muted">
+          {m.tags.map((tag, i) => (
+            <Fragment key={tag}>
+              {i > 0 && ' · '}
+              <span className={tag === 'nuts' ? 'font-medium text-rose-800' : undefined}>{label(`tag_${tag}`)}</span>
+            </Fragment>
+          ))}
+        </p>
+      )}
+    </li>
   )
 }

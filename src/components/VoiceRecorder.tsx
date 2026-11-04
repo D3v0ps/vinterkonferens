@@ -1,6 +1,9 @@
-// Röstinspelning med MediaRecorder + (om webbläsaren stöder det) live-transkribering via Web Speech API.
+// Röstinspelning. Med mikrofon: MediaRecorder + (om webbläsaren stöder det) live-transkribering
+// via Web Speech API. Utan mikrofon (i artifacten, eller i webbläsare utan MediaRecorder) spelar man
+// in med telefonens egen inspelare via en filväljare – samma onDone-kontrakt i båda fallen.
 import { useEffect, useRef, useState } from 'react'
 import { Mic, Square } from 'lucide-react'
+import { canUseMicrophone } from '../lib/platform'
 import { Button, Select, cx } from './ui'
 
 export interface Recording {
@@ -65,13 +68,62 @@ const LANGS = [
 
 const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
 
-export default function VoiceRecorder({ onDone, disabled }: { onDone: (r: Recording) => void; disabled?: boolean }) {
+interface Props {
+  onDone: (r: Recording) => void
+  disabled?: boolean
+}
+
+/** Live-inspelning bara där mikrofonen får användas – i artifacten anropas varken getUserMedia eller taligenkänning. */
+const liveSupported =
+  canUseMicrophone && typeof window !== 'undefined' && typeof MediaRecorder !== 'undefined' && !!navigator.mediaDevices?.getUserMedia
+
+export default function VoiceRecorder(props: Props) {
+  return liveSupported ? <LiveRecorder {...props} /> : <PhoneRecorder {...props} />
+}
+
+const AUDIO_EXT = /\.(m4a|mp3|wav|aac|ogg|oga|opus|amr|caf|3gp|3gpp|webm|flac)$/i
+
+/** Telefonens egen inspelare (eller en befintlig ljudfil) via filväljaren. */
+function PhoneRecorder({ onDone, disabled }: Props) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [err, setErr] = useState<string | null>(null)
+
+  function pick(list: FileList | null) {
+    const file = list?.[0]
+    if (inputRef.current) inputRef.current.value = ''
+    if (!file) return
+    const looksLikeAudio = !file.type || file.type.startsWith('audio/') || file.type.startsWith('video/') || AUDIO_EXT.test(file.name)
+    if (!looksLikeAudio) return setErr('Filen är inte en ljudfil. Välj en inspelning, till exempel från röstmemon.')
+    if (!file.size) return setErr('Inspelningen är tom. Spela in igen.')
+    setErr(null)
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '')
+    onDone({ blob: file, fileName: file.name || `rostinspelning-${stamp}.m4a`, transcript: '', lang: 'sv' })
+  }
+
+  return (
+    <div>
+      <input ref={inputRef} type="file" accept="audio/*" capture className="hidden" onChange={(e) => pick(e.target.files)} />
+      <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={() => inputRef.current?.click()} disabled={disabled}>
+        <Mic className="size-4" aria-hidden /> Spela in eller välj ljudfil
+      </Button>
+      <p className="mt-1.5 text-sm text-muted">På mobilen öppnas telefonens inspelare. Du kan också välja en ljudfil du redan har.</p>
+      {err && (
+        <p className="mt-2 text-base text-rose-700" role="alert">
+          {err}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function LiveRecorder({ onDone, disabled }: Props) {
   const [lang, setLang] = useState('sv-SE')
   const [recording, setRecording] = useState(false)
   const [seconds, setSeconds] = useState(0)
   const [finalText, setFinalText] = useState('')
   const [interim, setInterim] = useState('')
   const [msg, setMsg] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
   const [starting, setStarting] = useState(false)
 
   const recRef = useRef<MediaRecorder | null>(null)
@@ -83,7 +135,6 @@ export default function VoiceRecorder({ onDone, disabled }: { onDone: (r: Record
   const startingRef = useRef(false)
   const unmounted = useRef(false)
 
-  const supported = typeof window !== 'undefined' && typeof MediaRecorder !== 'undefined' && !!navigator.mediaDevices?.getUserMedia
   const hasSpeech = typeof window !== 'undefined' && !!speechCtor()
 
   function cleanup() {
@@ -166,6 +217,7 @@ export default function VoiceRecorder({ onDone, disabled }: { onDone: (r: Record
     startingRef.current = true
     setStarting(true)
     setMsg(null)
+    setFailed(false)
     textRef.current = { final: '', interim: '' }
     setFinalText('')
     setInterim('')
@@ -196,10 +248,11 @@ export default function VoiceRecorder({ onDone, disabled }: { onDone: (r: Record
       timer.current = setInterval(() => setSeconds((s) => s + 1), 1000)
       setRecording(true)
       if (hasSpeech) startSpeech()
-      else setMsg('Den här webbläsaren kan inte transkribera live. Ljudet sparas och kan transkriberas efteråt.')
+      else setMsg('Den här webbläsaren kan inte skriva ut talet medan du pratar. Ljudet sparas ändå.')
     } catch (e) {
       cleanup()
       const name = (e as Error).name
+      setFailed(true)
       setMsg(
         name === 'NotAllowedError' || name === 'SecurityError'
           ? 'Mikrofonen är blockerad. Tillåt mikrofon för den här sidan i webbläsarens inställningar.'
@@ -221,13 +274,10 @@ export default function VoiceRecorder({ onDone, disabled }: { onDone: (r: Record
     if (recRef.current?.state === 'recording') recRef.current.stop()
   }
 
-  if (!supported)
-    return <p className="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-600">Inspelning stöds inte i den här webbläsaren. Spela in med telefonens röstmemo-app och ladda upp filen i stället.</p>
-
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+    <div>
       <div className="flex flex-wrap items-center gap-2">
-        <Select value={lang} onChange={(e) => setLang(e.target.value)} disabled={recording} className="w-auto" aria-label="Språk">
+        <Select value={lang} onChange={(e) => setLang(e.target.value)} disabled={recording} className="w-auto" aria-label="Språk i inspelningen">
           {LANGS.map((l) => (
             <option key={l.code} value={l.code}>
               {l.label}
@@ -235,33 +285,42 @@ export default function VoiceRecorder({ onDone, disabled }: { onDone: (r: Record
           ))}
         </Select>
         {!recording ? (
-          <Button type="button" variant="accent" onClick={start} disabled={disabled || starting}>
-            <Mic className="size-4" /> Spela in
+          <Button type="button" variant="secondary" onClick={start} disabled={disabled || starting}>
+            <Mic className="size-4" aria-hidden /> Spela in
           </Button>
         ) : (
-          <Button type="button" variant="danger" onClick={stop}>
-            <Square className="size-4 fill-current" /> Stoppa
+          <Button type="button" onClick={stop}>
+            <Square className="size-4 fill-current" aria-hidden /> Stoppa
           </Button>
         )}
         {recording && (
-          <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-rose-700 tabular-nums">
-            <span className="size-2.5 animate-pulse rounded-full bg-rose-600" /> {mmss(seconds)}
+          <span className="inline-flex items-center gap-2 text-base font-medium text-accent-strong tabular-nums">
+            <span className="size-2.5 animate-pulse rounded-full bg-accent" aria-hidden /> Spelar in {mmss(seconds)}
           </span>
         )}
       </div>
       {(recording || finalText) && (hasSpeech || finalText) && (
-        <p dir={lang.startsWith('ar') ? 'rtl' : 'ltr'} className={cx('mt-2 min-h-6 whitespace-pre-wrap text-sm', !finalText && !interim && 'text-slate-400')}>
+        <p dir={lang.startsWith('ar') ? 'rtl' : 'ltr'} className={cx('mt-3 min-h-6 whitespace-pre-wrap text-base', finalText || interim ? 'text-slate-700' : 'text-muted')}>
           {finalText || interim ? (
             <>
               {finalText}
-              <span className="text-slate-400">{interim}</span>
+              <span className="text-muted">{interim}</span>
             </>
           ) : (
             'Lyssnar …'
           )}
         </p>
       )}
-      {msg && <p className="mt-2 text-xs text-amber-800">{msg}</p>}
+      {msg && (
+        <p className={cx('mt-2', failed ? 'text-base text-rose-700' : 'text-sm text-muted')} role={failed ? 'alert' : undefined}>
+          {msg}
+        </p>
+      )}
+      {failed && (
+        <div className="mt-3">
+          <PhoneRecorder onDone={onDone} disabled={disabled} />
+        </div>
+      )}
     </div>
   )
 }
