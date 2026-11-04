@@ -8,7 +8,7 @@ export function tr(v: Localized | null | undefined, lang: Lang): string {
 
 export function kr(n: number | null | undefined): string {
   if (n == null || Number.isNaN(n)) return '–'
-  return new Intl.NumberFormat('sv-SE', { style: 'currency', currency: 'SEK', maximumFractionDigits: 2 }).format(n)
+  return new Intl.NumberFormat('sv-SE', { style: 'currency', currency: 'SEK', minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 }).format(n)
 }
 
 export function num(n: number, digits = 0): string {

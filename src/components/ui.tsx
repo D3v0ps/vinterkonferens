@@ -44,7 +44,7 @@ export function Button({
 
 export function Card({ className, children, ...rest }: { className?: string; children: ReactNode } & React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div {...rest} className={cx('rounded-2xl border border-slate-200 bg-white shadow-sm', className)}>
+    <div {...rest} className={cx('card', className)}>
       {children}
     </div>
   )
@@ -63,8 +63,7 @@ export function Field({ label, hint, children, required, className }: { label: s
   )
 }
 
-const inputCls =
-  'w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-base sm:text-sm text-slate-900 placeholder:text-slate-400 focus:border-ink-soft focus:outline-none focus:ring-2 focus:ring-ink/15 disabled:bg-slate-100'
+const inputCls = 'field'
 
 export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={cx(inputCls, props.className)} />

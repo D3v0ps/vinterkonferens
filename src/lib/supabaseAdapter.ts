@@ -12,24 +12,38 @@ export function createSupabaseAdapter(sb: SupabaseClient): DataAdapter {
     mode: 'supabase',
 
     async list(table, q?: Query) {
-      let b = sb.from(table).select('*')
-      for (const f of q?.filters ?? []) {
-        switch (f.op) {
-          case 'in':
-            b = b.in(f.col, f.value as unknown[])
-            break
-          case 'is':
-            b = b.is(f.col, f.value as null)
-            break
-          default:
-            b = b.filter(f.col, f.op, f.value as string)
+      const build = () => {
+        let b = sb.from(table).select('*')
+        for (const f of q?.filters ?? []) {
+          switch (f.op) {
+            case 'in':
+              b = b.in(f.col, f.value as unknown[])
+              break
+            case 'is':
+              b = b.is(f.col, f.value as null)
+              break
+            default:
+              b = b.filter(f.col, f.op, f.value as string)
+          }
         }
+        for (const o of q?.order ?? []) b = b.order(o.col, { ascending: o.asc !== false })
+        return b.order('id')
       }
-      for (const o of q?.order ?? []) b = b.order(o.col, { ascending: o.asc !== false })
-      if (q?.limit) b = b.limit(q.limit)
-      const { data, error } = await b
-      fail(error)
-      return (data ?? []) as never
+      if (q?.limit) {
+        const { data, error } = await build().limit(q.limit)
+        fail(error)
+        return (data ?? []) as never
+      }
+      // Supabase ger max 1000 rader per anrop – hämta sida för sida (t.ex. köksräkningen)
+      const PAGE = 1000
+      const all: unknown[] = []
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await build().range(from, from + PAGE - 1)
+        fail(error)
+        all.push(...(data ?? []))
+        if (!data || data.length < PAGE) break
+      }
+      return all as never
     },
 
     async get(table, id) {
