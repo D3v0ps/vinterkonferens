@@ -1,4 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
+import { FunctionsHttpError, type SupabaseClient } from '@supabase/supabase-js'
 import type { Bucket, DataAdapter, Query } from './db'
 import { emitChange } from './db'
 import type { TableName } from './types'
@@ -81,8 +81,9 @@ export function createSupabaseAdapter(sb: SupabaseClient): DataAdapter {
     },
 
     async remove(table: TableName, id) {
-      const { error } = await sb.from(table).delete().eq('id', id)
+      const { data, error } = await sb.from(table).delete().eq('id', id).select('id')
       fail(error)
+      if (!data?.length) throw new Error('Kunde inte ta bort – raden finns inte längre eller så saknar du behörighet.')
       emitChange(table)
     },
 
@@ -113,7 +114,15 @@ export function createSupabaseAdapter(sb: SupabaseClient): DataAdapter {
 
     async transcribe(bucket, path, lang) {
       const { data, error } = await sb.functions.invoke('transcribe', { body: { bucket, path, lang } })
-      if (error) throw new Error('Transkriberingen misslyckades: ' + error.message)
+      if (error) {
+        let msg = error.message
+        // Funktionens eget felmeddelande ligger i svarskroppen
+        if (error instanceof FunctionsHttpError && error.context instanceof Response) {
+          const body = (await error.context.json().catch(() => null)) as { error?: string } | null
+          if (body?.error) msg = body.error
+        }
+        throw new Error('Transkriberingen misslyckades: ' + msg)
+      }
       return (data as { text?: string } | null)?.text ?? null
     },
   }

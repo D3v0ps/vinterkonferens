@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   BarChart3, Baby, CalendarCheck, CalendarDays, ClipboardList, ExternalLink, Gauge, Home, Megaphone, Menu as MenuIcon,
-  NotebookPen, Package, Settings, ShoppingCart, UsersRound, UtensilsCrossed, LogOut, X,
+  NotebookPen, Package, Settings, ShoppingCart, UsersRound, UtensilsCrossed, LogOut, WifiOff, X,
 } from 'lucide-react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
@@ -38,6 +38,22 @@ export default function InternalLayout() {
 
   if (auth.status === 'loading') return <Spinner />
   if (auth.status === 'signedOut') return <Login />
+  if (auth.membershipsError)
+    return (
+      <div className="mx-auto mt-16 max-w-md px-4 text-center">
+        <WifiOff className="mx-auto size-10 text-slate-400" />
+        <h1 className="mt-3 text-xl font-bold text-ink">Kunde inte hämta dina kommittéer</h1>
+        <p className="mt-2 text-sm text-slate-600">Kontrollera nätverket och försök igen.</p>
+        <p className="mt-1 text-xs text-slate-400">{auth.membershipsError}</p>
+        <div className="mt-5 flex justify-center gap-2">
+          <Button onClick={auth.reloadMemberships}>Försök igen</Button>
+          <Button variant="secondary" onClick={auth.signOut}>
+            Logga ut
+          </Button>
+        </div>
+      </div>
+    )
+  if (!auth.membershipsLoaded) return <Spinner />
   if (!auth.isStaff)
     return (
       <div className="mx-auto mt-16 max-w-md px-4 text-center">

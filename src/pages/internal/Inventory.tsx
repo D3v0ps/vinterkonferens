@@ -7,7 +7,7 @@ import { downloadCsv, kr, num } from '../../lib/format'
 import { useList } from '../../lib/hooks'
 import { todayStr } from '../../lib/time'
 import type { ItemStatus, Purchase, PurchaseItem } from '../../lib/types'
-import { lineTotal, useCanEditPurchase } from './Purchases'
+import { lineTotal } from './Purchases'
 
 const STATUS: Record<ItemStatus, { label: string; tone: 'green' | 'slate' | 'amber' | 'blue' }> = {
   in_stock: { label: 'I lager', tone: 'green' },
@@ -20,7 +20,6 @@ type Row = PurchaseItem & { purchase: Purchase | undefined }
 
 export default function Inventory() {
   const auth = useAuth()
-  const canEdit = useCanEditPurchase()
   const items = useList('purchase_items', { order: [{ col: 'name' }] })
   const purchases = useList('purchases')
   const [q, setQ] = useState('')
@@ -91,10 +90,11 @@ export default function Inventory() {
     )
   }
 
-  const editable = (r: Row) => !!r.purchase && canEdit(r.purchase)
+  // Alla volontärer får ändra förvaringsplats och status (övriga kolumner spärras i databasen)
+  const editable = auth.isStaff
 
   const statusCell = (r: Row) =>
-    editable(r) ? (
+    editable ? (
       <Select value={r.status} onChange={(e) => patch(r, { status: e.target.value as ItemStatus })} className="w-auto py-1.5 text-sm" aria-label="Status">
         {(Object.keys(STATUS) as ItemStatus[]).map((s) => (
           <option key={s} value={s}>
@@ -107,7 +107,7 @@ export default function Inventory() {
     )
 
   const storageCell = (r: Row) =>
-    editable(r) ? (
+    editable ? (
       <Input
         key={r.storage_location ?? ''}
         defaultValue={r.storage_location ?? ''}

@@ -5,6 +5,7 @@ import { Button, Card, ErrorText, Field, Input, LocalizedInput, PageHeader, Sele
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { EMPTY_SETTINGS } from '../../lib/conference'
+import { uuid } from '../../lib/db'
 import { useList } from '../../lib/hooks'
 import { formatDay } from '../../lib/time'
 import type { Committee, ConferenceDay, Lang, Settings } from '../../lib/types'
@@ -194,7 +195,12 @@ function Committees() {
           loading={sv.busy}
           onClick={() =>
             sv.run(async () => {
-              const slug = name.trim().toLowerCase().normalize('NFKD').replace(/[^\w]+/g, '-').replace(/^-|-$/g, '')
+              // Köket → koket, Gästbemötare → gastbemotare (måste matcha slugs i RLS och behörighetskontroller)
+              const base =
+                name.trim().toLowerCase().normalize('NFKD').replace(/\p{M}+/gu, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') ||
+                `k-${uuid().slice(0, 8)}`
+              let slug = base
+              for (let i = 2; data.some((c) => c.slug === slug); i++) slug = `${base}-${i}`
               await api.insert('committees', { name: name.trim(), slug, description: '', color: '#334155', sort: data.length })
               setName('')
             })

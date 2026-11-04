@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Pencil, Plus, Timer, Undo2 } from 'lucide-react'
 import { Badge, Button, Card, Empty, ErrorText, Input, PageHeader, Spinner, Tabs, cx } from '../../components/ui'
 import { CHECKPOINT_LABEL, KITCHEN_CATS } from '../../components/stats/labels'
@@ -138,8 +138,8 @@ function useSaveCount() {
 }
 
 function parseCount(v: string): number | null {
-  const n = Number(v.replace(/\s/g, ''))
-  return Number.isInteger(n) && n >= 0 ? n : null
+  const s = v.replace(/\s/g, '')
+  return /^\d+$/.test(s) ? Number(s) : null
 }
 
 function CheckpointBox({ s, cp, at, t, row }: { s: Session; cp: Checkpoint; at: Date; t: Date; row?: FlowCount }) {
@@ -289,12 +289,20 @@ function KitchenCounting() {
   )
   const [pending, setPending] = useState<KitchenEvent[]>([])
   const [mine, setMine] = useState<string[]>([])
+  // Pågående inserts per tryck: true = sparad, false = misslyckades
+  const inflight = useRef(new Map<string, Promise<boolean>>())
   const [flash, setFlash] = useState<{ cat: KitchenCategory; at: number } | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [q, setQ] = useState('')
 
+  // Ny dag (t.ex. surfplattan stod på över natten): gårdagens tryck ska inte räknas eller kunna ångras
+  useEffect(() => {
+    setPending((p) => (p.length ? [] : p))
+    setMine((m) => (m.length ? [] : m))
+  }, [today])
+
   const ids = new Set(events.data.map((e) => e.id))
-  const all = [...events.data, ...pending.filter((p) => !ids.has(p.id))]
+  const all = [...events.data, ...pending.filter((p) => !ids.has(p.id) && p.occurred_at >= dayStart)]
   const cutoff = t.getTime() - 15 * 60_000
   const sum = (cat: KitchenCategory, from = 0) =>
     all.filter((e) => e.category === cat && new Date(e.occurred_at).getTime() >= from).reduce((a, e) => a + e.quantity, 0)
@@ -307,11 +315,17 @@ function KitchenCounting() {
     setFlash({ cat, at: stamp })
     setTimeout(() => setFlash((f) => (f?.at === stamp ? null : f)), 700)
     navigator.vibrate?.(12)
-    api.insert('kitchen_events', ev).catch((e: Error) => {
-      setPending((p) => p.filter((x) => x.id !== ev.id))
-      setMine((m) => m.filter((x) => x !== ev.id))
-      setErr('Kunde inte spara: ' + e.message)
-    })
+    const p = api.insert('kitchen_events', ev).then(
+      () => true,
+      (e: Error) => {
+        setPending((p) => p.filter((x) => x.id !== ev.id))
+        setMine((m) => m.filter((x) => x !== ev.id))
+        setErr('Kunde inte spara: ' + e.message)
+        return false
+      },
+    )
+    inflight.current.set(ev.id, p)
+    void p.finally(() => inflight.current.delete(ev.id))
   }
 
   async function undo() {
@@ -320,6 +334,7 @@ function KitchenCounting() {
     setMine((m) => m.slice(0, -1))
     setPending((p) => p.filter((x) => x.id !== id))
     try {
+      if ((await inflight.current.get(id)) === false) return
       await api.remove('kitchen_events', id)
     } catch (e) {
       setErr((e as Error).message)

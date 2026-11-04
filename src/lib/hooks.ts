@@ -10,6 +10,15 @@ export function useList<T extends TableName>(table: T, q?: Query, opts?: { pollM
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const key = JSON.stringify(q ?? {})
+  // Ny fråga: släpp förra frågans rader direkt (under render, så ingen ruta visar gammal data).
+  const id = table + '|' + key
+  const [dataFor, setDataFor] = useState(id)
+  if (dataFor !== id) {
+    setDataFor(id)
+    setData([])
+    setLoading(true)
+    setError(null)
+  }
   const enabled = opts?.enabled !== false
   const seq = useRef(0)
 

@@ -10,7 +10,7 @@ import { formatDay, localTime, sessionStatus } from '../../lib/time'
 
 export default function Home() {
   const { t, lang } = useI18n()
-  const { settings, days, isConferenceDay, currentDay } = useConference()
+  const { settings, days, today, isConferenceDay, currentDay } = useConference()
   const at = useNow()
   const date = currentDay?.date ?? null
   const { sessions } = useDaySessions(date, ['adults', 'all'])
@@ -33,7 +33,7 @@ export default function Home() {
     <>
       <section className="mb-5">
         <p className="text-sm font-semibold first-letter:uppercase text-accent">
-          {isConferenceDay && date ? `${t.today} · ${formatDay(date, lang)}` : days[0] ? `${t.conferenceStarts} ${formatDay(days[0].date, lang)}` : ''}
+          {isConferenceDay && date ? `${t.today} · ${formatDay(date, lang)}` : days[0] && today < days[0].date ? `${t.conferenceStarts} ${formatDay(days[0].date, lang)}` : ''}
         </p>
         <h1 className="mt-1 text-3xl font-black leading-tight tracking-tight text-ink">{settings.conference_name}</h1>
         {tr(settings.tagline, lang) && <p className="mt-1 text-slate-600">{tr(settings.tagline, lang)}</p>}

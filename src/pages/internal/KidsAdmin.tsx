@@ -19,11 +19,33 @@ const STATUS: Record<RegistrationStatus, { label: string; tone: 'slate' | 'green
 
 const digits = (s: string) => s.replace(/\D/g, '')
 
+/** Anmälan kan komma via det publika RPC:t – läs barnen defensivt så en trasig rad inte kraschar sidan. */
+function safeChildren(raw: unknown): Child[] {
+  if (!Array.isArray(raw)) return []
+  return raw.map((c) => {
+    const o = c && typeof c === 'object' ? (c as Record<string, unknown>) : {}
+    return {
+      name: typeof o.name === 'string' ? o.name : '',
+      age: typeof o.age === 'number' && Number.isFinite(o.age) ? o.age : null,
+      allergies: typeof o.allergies === 'string' ? o.allergies : '',
+    }
+  })
+}
+
+/** "1 500", "150 kr", "150:-", "99,50" → tal. null = tomt, undefined = ogiltigt. */
+function parseAmount(v: string): number | null | undefined {
+  const t = v.replace(/\s|kr|:-/gi, '').replace(',', '.')
+  if (!t) return null
+  const n = Number(t)
+  return Number.isFinite(n) && n >= 0 ? n : undefined
+}
+
 export default function KidsAdmin() {
   const auth = useAuth()
   const canEdit = auth.isAdmin || auth.isMemberOf('fritids') || auth.isMemberOf('gastbemotare')
   const { days } = useConference()
-  const { data: regs, loading } = useList('kids_registrations', { order: [{ col: 'reg_number' }] }, { pollMs: 20_000 })
+  const { data, loading } = useList('kids_registrations', { order: [{ col: 'reg_number' }] }, { pollMs: 20_000 })
+  const regs = useMemo(() => data.map((r) => ({ ...r, children: safeChildren(r.children), days: Array.isArray(r.days) ? r.days : [] })), [data])
   const [q, setQ] = useState('')
   const [day, setDay] = useState('')
   const [status, setStatus] = useState<RegistrationStatus | ''>('')
@@ -57,10 +79,11 @@ export default function KidsAdmin() {
   async function markPaid(r: KidsRegistration) {
     const v = prompt(`Belopp som betalats för #${r.reg_number} (kr):`, r.amount != null ? String(r.amount) : '')
     if (v === null) return
-    const amount = v.trim() ? Number(v.replace(',', '.')) : null
+    const amount = parseAmount(v)
+    if (amount === undefined) return alert('Ogiltigt belopp – skriv t.ex. 150 eller 1 500.')
     await api.update('kids_registrations', r.id, {
       paid: true,
-      amount: Number.isFinite(amount) ? amount : null,
+      amount,
       paid_at: now().toISOString(),
       status: r.status === 'registered' ? 'paid' : r.status,
     })

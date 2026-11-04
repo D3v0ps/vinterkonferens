@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { AudioLines, Download, FileText, ImageIcon, Paperclip, Search, Trash2, Upload, Video, X } from 'lucide-react'
 import VoiceRecorder, { type Recording } from '../../components/VoiceRecorder'
 import { Badge, Button, Card, Empty, ErrorText, Field, Input, PageHeader, Select, Spinner, Textarea } from '../../components/ui'
-import { api } from '../../lib/api'
+import { api, isDemo } from '../../lib/api'
 import { useAuth, useAuthorFields } from '../../lib/auth'
 import { safeFileName, uuid } from '../../lib/db'
 import { fileSize } from '../../lib/format'
@@ -140,9 +140,9 @@ function NoteForm() {
     if (!files.length && !recording && !body.trim()) return setErr('Skriv en text, välj en fil eller spela in.')
     if (recording && recording.blob.size > MAX_BYTES) return setErr('Inspelningen är för lång (max 50 MB).')
 
-    const uploads: { blob: Blob; name: string; transcript: string | null; lang: string }[] = [
-      ...files.map((f) => ({ blob: f as Blob, name: f.name, transcript: null, lang: audioLang })),
-      ...(recording ? [{ blob: recording.blob, name: recording.fileName, transcript: recording.transcript || null, lang: recording.lang }] : []),
+    const uploads: { src: File | null; blob: Blob; name: string; transcript: string | null; lang: string }[] = [
+      ...files.map((f) => ({ src: f, blob: f as Blob, name: f.name, transcript: null, lang: audioLang })),
+      ...(recording ? [{ src: null, blob: recording.blob, name: recording.fileName, transcript: recording.transcript || null, lang: recording.lang }] : []),
     ]
     const base = {
       committee_id: committeeId || null,
@@ -159,17 +159,26 @@ function NoteForm() {
         const path = `${uuid()}/${safeFileName(u.name)}`
         await api.upload('notes', path, u.blob)
         const k = kindOf(u.name, u.blob.type)
-        const note = await api.insert('notes', {
-          ...base,
-          title: uploads.length > 1 ? `${title.trim()} (${i + 1}/${uploads.length})` : title.trim(),
-          body: i === 0 ? body.trim() || null : null,
-          transcript: u.transcript,
-          file_path: path,
-          file_name: u.name,
-          file_type: u.blob.type || null,
-          file_size: u.blob.size,
-          kind: k,
-        })
+        const note = await api
+          .insert('notes', {
+            ...base,
+            title: uploads.length > 1 ? `${title.trim()} (${i + 1}/${uploads.length})` : title.trim(),
+            body: i === 0 ? body.trim() || null : null,
+            transcript: u.transcript,
+            file_path: path,
+            file_name: u.name,
+            file_type: u.blob.type || null,
+            file_size: u.blob.size,
+            kind: k,
+          })
+          .catch(async (e) => {
+            await api.removeFile('notes', path).catch(() => undefined)
+            throw e
+          })
+        // Ta bort det som sparats ur formuläret direkt, så att ett nytt försök efter ett fel inte skapar dubbletter
+        if (u.src) setFiles((prev) => prev.filter((f) => f !== u.src))
+        else setRecording(null)
+        if (i === 0) setBody('')
         if (k === 'audio' && !u.transcript && api.mode === 'supabase') {
           setStatus('Transkriberar …')
           try {
@@ -282,10 +291,15 @@ function NoteForm() {
   )
 }
 
+/** Signerade länkar gäller en timme (supabaseAdapter.fileUrl) – hämta en ny innan dess. */
+const URL_MAX_AGE = 50 * 60 * 1000
+
 /** Hämtar en (signerad) fil-URL först när kortet syns på skärmen. */
 function useLazyFileUrl(path: string | null) {
   const ref = useRef<HTMLDivElement>(null)
   const [url, setUrl] = useState<string | null>(null)
+  const [nonce, setNonce] = useState(0)
+  const signedAt = useRef(0)
   useEffect(() => {
     if (!path || !ref.current) return
     let created: string | null = null
@@ -296,7 +310,9 @@ function useLazyFileUrl(path: string | null) {
         obs.disconnect()
         api.fileUrl('notes', path).then((u) => {
           created = u
-          if (!cancelled) setUrl(u)
+          if (cancelled) return
+          signedAt.current = Date.now()
+          setUrl(u)
         })
       },
       { rootMargin: '200px' },
@@ -307,20 +323,41 @@ function useLazyFileUrl(path: string | null) {
       obs.disconnect()
       if (created?.startsWith('blob:')) URL.revokeObjectURL(created)
     }
-  }, [path])
-  return { ref, url }
+  }, [path, nonce])
+  const stale = () => api.mode === 'supabase' && !!url && Date.now() - signedAt.current > URL_MAX_AGE
+  return {
+    ref,
+    url,
+    /** Laddar om ljud/video med en ny länk om den gamla har gått ut. */
+    refreshIfStale: () => void (stale() && setNonce((n) => n + 1)),
+    /** Öppnar filen med en ny länk om den gamla har gått ut; annars sköter länken sig själv. */
+    openFresh: (e: React.MouseEvent) => {
+      if (!path || !stale()) return
+      e.preventDefault()
+      const w = window.open('', '_blank')
+      api.fileUrl('notes', path).then((u) => {
+        if (u && w) w.location.href = u
+        else w?.close()
+        if (u) {
+          signedAt.current = Date.now()
+          setUrl(u)
+        }
+      })
+    },
+  }
 }
 
 function NoteCard({ note }: { note: Note }) {
   const auth = useAuth()
-  const { ref, url } = useLazyFileUrl(note.file_path)
+  const { ref, url, refreshIfStale, openFresh } = useLazyFileUrl(note.file_path)
   const [imgFailed, setImgFailed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [lang, setLang] = useState('sv')
   const committee = auth.committees.find((c) => c.id === note.committee_id)
-  const canDelete =
-    auth.isAdmin || (!!note.created_by && note.created_by === auth.userId) || (!!note.author_name && note.author_name === auth.displayName)
+  // Samma regel som RLS för notes (skapare eller admin); namnet räcker bara i demoläget
+  const canEdit = auth.isAdmin || (!!note.created_by && note.created_by === auth.userId)
+  const canDelete = canEdit || (isDemo && !!note.author_name && note.author_name === auth.displayName)
   const Icon = { text: FileText, image: ImageIcon, audio: AudioLines, video: Video, document: FileText, other: Paperclip }[note.kind]
 
   async function remove() {
@@ -336,7 +373,7 @@ function NoteCard({ note }: { note: Note }) {
   }
 
   async function transcribe() {
-    if (!note.file_path) return
+    if (!note.file_path || !canEdit) return
     setBusy(true)
     setErr(null)
     try {
@@ -356,7 +393,7 @@ function NoteCard({ note }: { note: Note }) {
         {note.kind === 'image' && note.file_path && (
           <div className="flex aspect-video items-center justify-center bg-slate-100">
             {url && !imgFailed ? (
-              <a href={url} target="_blank" rel="noreferrer" className="block size-full">
+              <a href={url} onClick={openFresh} target="_blank" rel="noreferrer" className="block size-full">
                 <img src={url} alt={note.title} loading="lazy" onError={() => setImgFailed(true)} className="size-full object-cover" />
               </a>
             ) : (
@@ -364,7 +401,7 @@ function NoteCard({ note }: { note: Note }) {
             )}
           </div>
         )}
-        {note.kind === 'video' && url && <video controls preload="metadata" src={url} className="aspect-video w-full bg-black" />}
+        {note.kind === 'video' && url && <video controls preload="metadata" src={url} onError={refreshIfStale} className="aspect-video w-full bg-black" />}
       <div className="flex flex-1 flex-col gap-2 p-4">
         <div className="flex items-start justify-between gap-2">
           <h3 className="flex items-center gap-1.5 font-semibold text-ink">
@@ -377,10 +414,11 @@ function NoteCard({ note }: { note: Note }) {
           )}
         </div>
         {note.body && <p className="whitespace-pre-wrap text-sm text-slate-700">{note.body}</p>}
-        {note.kind === 'audio' && url && <audio controls preload="metadata" src={url} className="w-full" />}
+        {note.kind === 'audio' && url && <audio controls preload="metadata" src={url} onError={refreshIfStale} className="w-full" />}
         {note.file_path && (note.kind === 'document' || note.kind === 'other' || imgFailed) && (
           <a
             href={url ?? undefined}
+            onClick={openFresh}
             download={note.file_name ?? undefined}
             target="_blank"
             rel="noreferrer"
@@ -397,7 +435,7 @@ function NoteCard({ note }: { note: Note }) {
             </p>
           </details>
         )}
-        {note.kind === 'audio' && !note.transcript && api.mode === 'supabase' && (
+        {note.kind === 'audio' && !note.transcript && api.mode === 'supabase' && canEdit && (
           <div className="flex items-center gap-2">
             <Select value={lang} onChange={(e) => setLang(e.target.value)} className="w-auto py-1.5" aria-label="Språk">
               {TRANSCRIBE_LANGS.map((l) => (

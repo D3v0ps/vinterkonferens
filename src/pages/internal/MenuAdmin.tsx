@@ -25,6 +25,13 @@ const TAGS: { value: string; label: string }[] = [
 
 type Form = Partial<MenuItem> & { priceText: string }
 
+function parseAmount(v: string): number | null | undefined {
+  const t = v.replace(/\s|kr|:-/gi, '').replace(',', '.')
+  if (!t) return null
+  const n = Number(t)
+  return Number.isFinite(n) && n >= 0 ? n : undefined
+}
+
 export default function MenuAdmin() {
   const auth = useAuth()
   const canEdit = auth.isAdmin || auth.isMemberOf('koket')
@@ -45,10 +52,12 @@ export default function MenuAdmin() {
   async function save() {
     if (!form) return
     if (!form.name?.sv?.trim()) return setErr('Namn på svenska behövs.')
+    const { priceText, id, ...rest } = form
+    const price = parseAmount(priceText)
+    if (price === undefined) return setErr('Ogiltigt pris – skriv t.ex. 25 eller 25,50.')
     setBusy(true)
     setErr(null)
-    const { priceText, id, ...rest } = form
-    const row: Partial<MenuItem> = { ...rest, price: priceText.trim() ? Number(priceText.replace(',', '.')) : null }
+    const row: Partial<MenuItem> = { ...rest, price }
     delete row.created_at
     try {
       if (id) await api.update('menu_items', id, row)

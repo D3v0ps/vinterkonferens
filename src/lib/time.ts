@@ -22,8 +22,13 @@ export function setSimulatedTime(local: string | null) {
     offsetMs = 0
   } else {
     const [d, t] = local.split('T')
-    const target = zonedToUtc(d, (t || '12:00').slice(0, 5)).getTime()
-    offsetMs = target - Date.now()
+    let target = NaN
+    try {
+      target = zonedToUtc(d, (t || '12:00').slice(0, 5)).getTime()
+    } catch {
+      /* ogiltigt ?tid-värde */
+    }
+    offsetMs = Number.isFinite(target) ? target - Date.now() : 0
   }
   try {
     if (offsetMs) sessionStorage.setItem(OFFSET_KEY, String(offsetMs))
@@ -69,9 +74,12 @@ export function zonedToUtc(date: string, time: string): Date {
   const [y, m, d] = date.split('-').map(Number)
   const [hh, mm] = time.split(':').map(Number)
   const guess = Date.UTC(y, m - 1, d, hh, mm)
-  const p = partsInTz(new Date(guess))
-  const asIfUtc = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute)
-  return new Date(guess - (asIfUtc - guess))
+  const off = (t: number) => {
+    const p = partsInTz(new Date(t))
+    return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute) - t
+  }
+  // Två varv: offseten ska läsas vid den faktiska tidpunkten, annars blir det fel runt sommartidsbytet.
+  return new Date(guess - off(guess - off(guess)))
 }
 
 /** Tidpunkt → 'YYYY-MM-DD' i svensk tid. */

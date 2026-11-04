@@ -72,6 +72,7 @@ export default function VoiceRecorder({ onDone, disabled }: { onDone: (r: Record
   const [finalText, setFinalText] = useState('')
   const [interim, setInterim] = useState('')
   const [msg, setMsg] = useState<string | null>(null)
+  const [starting, setStarting] = useState(false)
 
   const recRef = useRef<MediaRecorder | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -79,6 +80,8 @@ export default function VoiceRecorder({ onDone, disabled }: { onDone: (r: Record
   const keepAlive = useRef(false)
   const textRef = useRef({ final: '', interim: '' })
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const startingRef = useRef(false)
+  const unmounted = useRef(false)
 
   const supported = typeof window !== 'undefined' && typeof MediaRecorder !== 'undefined' && !!navigator.mediaDevices?.getUserMedia
   const hasSpeech = typeof window !== 'undefined' && !!speechCtor()
@@ -97,9 +100,13 @@ export default function VoiceRecorder({ onDone, disabled }: { onDone: (r: Record
     streamRef.current = null
   }
 
-  useEffect(() => () => {
-    if (recRef.current?.state === 'recording') recRef.current.stop()
-    cleanup()
+  useEffect(() => {
+    unmounted.current = false
+    return () => {
+      unmounted.current = true
+      if (recRef.current?.state === 'recording') recRef.current.stop()
+      cleanup()
+    }
   }, [])
 
   function startSpeech() {
@@ -154,12 +161,20 @@ export default function VoiceRecorder({ onDone, disabled }: { onDone: (r: Record
   }
 
   async function start() {
+    // Ett andra klick medan mikrofonen frågas efter skulle annars starta en inspelning som ingen kan stoppa
+    if (startingRef.current || recRef.current?.state === 'recording') return
+    startingRef.current = true
+    setStarting(true)
     setMsg(null)
     textRef.current = { final: '', interim: '' }
     setFinalText('')
     setInterim('')
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      if (unmounted.current) {
+        stream.getTracks().forEach((t) => t.stop())
+        return
+      }
       streamRef.current = stream
       const mime = pickMime()
       const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream)
@@ -177,6 +192,7 @@ export default function VoiceRecorder({ onDone, disabled }: { onDone: (r: Record
       rec.start(1000)
       recRef.current = rec
       setSeconds(0)
+      if (timer.current) clearInterval(timer.current)
       timer.current = setInterval(() => setSeconds((s) => s + 1), 1000)
       setRecording(true)
       if (hasSpeech) startSpeech()
@@ -189,6 +205,9 @@ export default function VoiceRecorder({ onDone, disabled }: { onDone: (r: Record
           ? 'Mikrofonen är blockerad. Tillåt mikrofon för den här sidan i webbläsarens inställningar.'
           : 'Kunde inte starta inspelningen: ' + (e as Error).message,
       )
+    } finally {
+      startingRef.current = false
+      if (!unmounted.current) setStarting(false)
     }
   }
 
@@ -216,7 +235,7 @@ export default function VoiceRecorder({ onDone, disabled }: { onDone: (r: Record
           ))}
         </Select>
         {!recording ? (
-          <Button type="button" variant="accent" onClick={start} disabled={disabled}>
+          <Button type="button" variant="accent" onClick={start} disabled={disabled || starting}>
             <Mic className="size-4" /> Spela in
           </Button>
         ) : (

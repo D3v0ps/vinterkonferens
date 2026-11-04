@@ -1,7 +1,7 @@
 // Inloggning för interna vyn.
 // Behörighet styrs av tabellen `volunteers`: den som finns med sin e-post i en
 // kommitté är volontär där; `is_lead` = kommittéansvarig; medlemmar i Styrgruppen = admin.
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { api, supabase } from './api'
 import { onTableChange } from './db'
 import type { Committee, Volunteer } from './types'
@@ -15,6 +15,11 @@ interface AuthState {
   /** Personens rader i volunteers (en per kommitté). */
   memberships: Volunteer[]
   committees: Committee[]
+  /** Medlemskapen för nuvarande e-post är hämtade. */
+  membershipsLoaded: boolean
+  /** Felmeddelande om hämtningen av medlemskap misslyckades. */
+  membershipsError: string | null
+  reloadMemberships: () => void
   displayName: string
   isStaff: boolean
   isAdmin: boolean
@@ -35,8 +40,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Status>('loading')
   const [email, setEmail] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
-  const [memberships, setMemberships] = useState<Volunteer[]>([])
+  const [loadedMemberships, setLoadedMemberships] = useState<Volunteer[]>([])
   const [committees, setCommittees] = useState<Committee[]>([])
+  // Vilken e-post `memberships` gäller (undefined = inget hämtat än)
+  const [loadedFor, setLoadedFor] = useState<string | null | undefined>(undefined)
+  const [loadError, setLoadError] = useState<{ for: string | null; message: string } | null>(null)
+  const reqRef = useRef(0)
 
   // Sessionen
   useEffect(() => {
@@ -62,11 +71,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Kommittéer + medlemskap
   const loadMemberships = useCallback(async () => {
-    const cs = await api.list('committees', { order: [{ col: 'sort' }] }).catch(() => [])
-    setCommittees(cs)
-    if (!email) return setMemberships([])
-    const vs = await api.list('volunteers', { filters: [{ col: 'email', op: 'eq', value: email }] }).catch(() => [])
-    setMemberships(vs)
+    const req = ++reqRef.current
+    setLoadError(null)
+    try {
+      const cs = await api.list('committees', { order: [{ col: 'sort' }] })
+      const vs = email ? await api.list('volunteers', { filters: [{ col: 'email', op: 'eq', value: email }] }) : []
+      if (req !== reqRef.current) return // svar på en äldre hämtning
+      setCommittees(cs)
+      setLoadedMemberships(vs)
+      setLoadedFor(email)
+    } catch (e) {
+      if (req === reqRef.current) setLoadError({ for: email, message: (e as Error).message })
+    }
   }, [email])
 
   useEffect(() => {
@@ -80,6 +96,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [loadMemberships])
 
   const value = useMemo<AuthState>(() => {
+    const membershipsLoaded = loadedFor === email
+    // Visa aldrig en annan e-posts medlemskap medan de nya hämtas
+    const memberships = membershipsLoaded ? loadedMemberships : []
     const slugOf = (id: string) => committees.find((c) => c.id === id)?.slug
     const isAdmin = memberships.some((m) => slugOf(m.committee_id) === 'styrgruppen')
     const isMember = (id: string | null | undefined) => isAdmin || (!!id && memberships.some((m) => m.committee_id === id))
@@ -91,6 +110,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       userId,
       memberships,
       committees,
+      membershipsLoaded,
+      membershipsError: !membershipsLoaded && loadError?.for === email ? loadError.message : null,
+      reloadMemberships: () => void loadMemberships(),
       displayName: memberships[0]?.full_name || email || '',
       isStaff: memberships.length > 0,
       isAdmin,
@@ -125,7 +147,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setStatus('signedOut')
       },
     }
-  }, [status, email, userId, memberships, committees])
+  }, [status, email, userId, loadedMemberships, committees, loadedFor, loadError, loadMemberships])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

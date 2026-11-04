@@ -25,7 +25,9 @@ export function fileSize(b: number | null | undefined): string {
 /** CSV som Excel (svensk) öppnar direkt: semikolon + BOM. */
 export function downloadCsv(filename: string, header: string[], rows: (string | number | null | undefined)[][]) {
   const esc = (v: string | number | null | undefined) => {
-    const s = v == null ? '' : typeof v === 'number' ? String(v).replace('.', ',') : v
+    let s = v == null ? '' : typeof v === 'number' ? String(v).replace('.', ',') : v
+    // Hindra att Excel tolkar inskickad text som formel (=, +, -, @ …)
+    if (typeof v === 'string' && /^[=+\-@\t\r]/.test(s)) s = "'" + s
     return /[;"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
   }
   const text = [header, ...rows].map((r) => r.map(esc).join(';')).join('\r\n')

@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { ChevronDown, ExternalLink, Pencil, Plus, Receipt, ShoppingCart, Trash2 } from 'lucide-react'
 import { Badge, Button, Card, Empty, ErrorText, Field, Input, Modal, PageHeader, Select, Spinner, Textarea, cx } from '../../components/ui'
-import { api } from '../../lib/api'
+import { api, isDemo } from '../../lib/api'
 import { useAuth, useAuthorFields } from '../../lib/auth'
 import { safeFileName, uuid } from '../../lib/db'
 import { kr } from '../../lib/format'
@@ -33,8 +33,12 @@ export async function openReceipt(path: string) {
 
 export function useCanEditPurchase() {
   const auth = useAuth()
+  // Namnet räcker bara i demoläget – RLS i Supabase går på created_by
   return (p: Purchase) =>
-    auth.isAdmin || auth.isLead(p.committee_id) || (!!p.created_by && p.created_by === auth.userId) || (!!p.author_name && p.author_name === auth.displayName)
+    auth.isAdmin ||
+    auth.isLead(p.committee_id) ||
+    (!!p.created_by && p.created_by === auth.userId) ||
+    (isDemo && !!p.author_name && p.author_name === auth.displayName)
 }
 
 export default function Purchases() {
@@ -45,6 +49,7 @@ export default function Purchases() {
   const [editing, setEditing] = useState<Purchase | 'new' | null>(null)
   const [open, setOpen] = useState<string | null>(null)
   const [committee, setCommittee] = useState('')
+  const [err, setErr] = useState<string | null>(null)
 
   const byPurchase = useMemo(() => {
     const m = new Map<string, PurchaseItem[]>()
@@ -57,9 +62,15 @@ export default function Purchases() {
 
   async function remove(p: Purchase) {
     if (!confirm(`Ta bort inköpet från ${p.store_name} med alla rader?`)) return
-    for (const i of byPurchase.get(p.id) ?? []) await api.remove('purchase_items', i.id)
-    await api.remove('purchases', p.id)
-    if (p.receipt_path) await api.removeFile('receipts', p.receipt_path).catch(() => undefined)
+    setErr(null)
+    try {
+      for (const i of byPurchase.get(p.id) ?? []) await api.remove('purchase_items', i.id)
+      // Kvittot före raden: lagringsreglerna tillåter borttagningen bara medan inköpet pekar på filen
+      if (p.receipt_path) await api.removeFile('receipts', p.receipt_path).catch(() => undefined)
+      await api.remove('purchases', p.id)
+    } catch (e) {
+      setErr((e as Error).message)
+    }
   }
 
   return (
@@ -87,6 +98,8 @@ export default function Purchases() {
           {shown.length} inköp · totalt <b className="text-ink">{kr(sum)}</b>
         </span>
       </div>
+
+      <ErrorText>{err}</ErrorText>
 
       {purchases.loading ? (
         <Spinner />
@@ -187,10 +200,10 @@ export default function Purchases() {
                       )}
                       {canEdit(p) && (
                         <>
-                          <Button size="sm" variant="secondary" onClick={() => setEditing(p)}>
+                          <Button size="sm" variant="secondary" onClick={() => setEditing(p)} disabled={items.loading}>
                             <Pencil className="size-4" /> Redigera
                           </Button>
-                          <Button size="sm" variant="danger" onClick={() => remove(p)}>
+                          <Button size="sm" variant="danger" onClick={() => remove(p)} disabled={items.loading}>
                             <Trash2 className="size-4" /> Ta bort
                           </Button>
                         </>
@@ -241,6 +254,8 @@ interface ItemDraft {
 }
 
 const emptyItem = (): ItemDraft => ({ name: '', brand: '', quantity: '1', unit: 'st', unit_price: '', discount: '', link: '', category: '', storage_location: '' })
+/** Tomt eller 0 i Antal sparas som 1 – samma regel i förhandsvisningen. */
+const qty = (r: ItemDraft) => toNum(r.quantity) || 1
 
 const CATEGORIES = ['Livsmedel', 'Förbrukning', 'Teknik', 'Verktyg', 'Dekoration', 'Barnmaterial', 'Städ', 'Kontor', 'Övrigt']
 const UNITS = ['st', 'paket', 'förp.', 'kg', 'liter', 'rulle', 'låda', 'set']
@@ -281,6 +296,9 @@ function PurchaseForm({ purchase, items, onDone }: { purchase: Purchase | null; 
         }))
       : [emptyItem()],
   )
+  const [origIds] = useState(() => items.map((i) => i.id))
+  // Redan borttagna rader hoppas över om användaren försöker spara igen efter ett fel
+  const removed = useRef(new Set<string>())
   const [receipt, setReceipt] = useState<File | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -288,7 +306,7 @@ function PurchaseForm({ purchase, items, onDone }: { purchase: Purchase | null; 
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value })
   const setRow = (i: number, k: keyof ItemDraft, v: string) => setRows(rows.map((r, j) => (j === i ? { ...r, [k]: v } : r)))
 
-  const parsed = rows.filter((r) => r.name.trim()).map((r) => ({ quantity: toNum(r.quantity), unit_price: toNum(r.unit_price), discount: toNum(r.discount) }))
+  const parsed = rows.filter((r) => r.name.trim()).map((r) => ({ quantity: qty(r), unit_price: toNum(r.unit_price), discount: toNum(r.discount) }))
   const totals = purchaseTotals({ discount_total: toNum(f.discount_total) }, parsed)
 
   async function save(e: React.FormEvent) {
@@ -300,14 +318,11 @@ function PurchaseForm({ purchase, items, onDone }: { purchase: Purchase | null; 
     if (receipt && receipt.size > 20 * 1024 * 1024) return setErr('Kvittot är för stort (max 20 MB).')
     setBusy(true)
     try {
-      let receipt_path = purchase?.receipt_path ?? null
-      let receipt_name = purchase?.receipt_name ?? null
+      const oldReceipt = purchase?.receipt_path ?? null
+      let uploaded: string | null = null
       if (receipt) {
-        const path = `${uuid()}/${safeFileName(receipt.name)}`
-        await api.upload('receipts', path, receipt)
-        if (receipt_path) await api.removeFile('receipts', receipt_path).catch(() => undefined)
-        receipt_path = path
-        receipt_name = receipt.name
+        uploaded = `${uuid()}/${safeFileName(receipt.name)}`
+        await api.upload('receipts', uploaded, receipt)
       }
       const row: Partial<Purchase> = {
         store_name: f.store_name.trim(),
@@ -321,15 +336,27 @@ function PurchaseForm({ purchase, items, onDone }: { purchase: Purchase | null; 
         discount_total: toNum(f.discount_total),
         discount_note: n(f.discount_note),
         notes: n(f.notes),
-        receipt_path,
-        receipt_name,
+        receipt_path: uploaded ?? oldReceipt,
+        receipt_name: uploaded ? receipt!.name : (purchase?.receipt_name ?? null),
       }
-      const saved = purchase ? await api.update('purchases', purchase.id, row) : await api.insert('purchases', { ...row, ...author() })
+      let saved: Purchase
+      try {
+        if (purchase && uploaded && oldReceipt) {
+          // Lagringsreglerna tillåter bara att kvittot tas bort medan inköpet pekar på det: spara först med det
+          // gamla kvittot (så att ett behörighetsfel stoppar innan något raderas), ta bort det och byt sedan.
+          await api.update('purchases', purchase.id, { ...row, receipt_path: oldReceipt, receipt_name: purchase.receipt_name })
+          await api.removeFile('receipts', oldReceipt).catch(() => undefined)
+        }
+        saved = purchase ? await api.update('purchases', purchase.id, row) : await api.insert('purchases', { ...row, ...author() })
+      } catch (e) {
+        if (uploaded) await api.removeFile('receipts', uploaded).catch(() => undefined)
+        throw e
+      }
       const toItem = (r: ItemDraft): Partial<PurchaseItem> => ({
         purchase_id: saved.id,
         name: r.name.trim(),
         brand: n(r.brand),
-        quantity: toNum(r.quantity) || 1,
+        quantity: qty(r),
         unit: n(r.unit),
         unit_price: toNum(r.unit_price),
         discount: toNum(r.discount),
@@ -338,7 +365,11 @@ function PurchaseForm({ purchase, items, onDone }: { purchase: Purchase | null; 
         storage_location: n(r.storage_location),
       })
       const keep = new Set(valid.map((r) => r.id).filter(Boolean))
-      for (const old of items) if (!keep.has(old.id)) await api.remove('purchase_items', old.id)
+      for (const id of origIds) {
+        if (keep.has(id) || removed.current.has(id)) continue
+        await api.remove('purchase_items', id)
+        removed.current.add(id)
+      }
       for (const r of valid.filter((r) => r.id)) await api.update('purchase_items', r.id!, toItem(r))
       const fresh = valid.filter((r) => !r.id).map((r) => ({ ...toItem(r), status: 'in_stock' as const }))
       if (fresh.length) await api.insertMany('purchase_items', fresh)
@@ -430,7 +461,7 @@ function PurchaseForm({ purchase, items, onDone }: { purchase: Purchase | null; 
                 </Field>
                 <div className="col-span-2 flex items-end justify-between gap-2">
                   <span className="pb-2.5 text-sm tabular-nums text-slate-600">
-                    = <b className="text-ink">{kr(toNum(r.quantity) * toNum(r.unit_price) - toNum(r.discount))}</b>
+                    = <b className="text-ink">{kr(qty(r) * toNum(r.unit_price) - toNum(r.discount))}</b>
                   </span>
                   {rows.length > 1 && (
                     <Button type="button" size="sm" variant="ghost" onClick={() => setRows(rows.filter((_, j) => j !== i))} aria-label="Ta bort rad">

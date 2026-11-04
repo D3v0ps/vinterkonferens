@@ -82,12 +82,14 @@ export default function Kids() {
 
 function RegistrationForm({ onDone, onClose }: { onDone: (r: SavedReg) => void; onClose: () => void }) {
   const { t, lang } = useI18n()
-  const { days } = useConference()
+  const { days, today } = useConference()
   const [guardian_name, setName] = useState('')
   const [guardian_phone, setPhone] = useState('')
   const [guardian_email, setEmail] = useState('')
   const [children, setChildren] = useState<Child[]>([{ name: '', age: null, allergies: '' }])
-  const [picked, setPicked] = useState<string[]>(() => days.map((d) => d.date))
+  // Härlett standardval: kommande dagar, även om dagarna laddas in efter att formuläret öppnats.
+  const [sel, setPicked] = useState<string[] | null>(null)
+  const picked = sel ?? days.filter((d) => d.date >= today).map((d) => d.date)
   const [pickup_names, setPickup] = useState('')
   const [notes, setNotes] = useState('')
   const [photo_consent, setConsent] = useState(false)

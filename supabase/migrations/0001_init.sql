@@ -147,7 +147,7 @@ create table public.purchases (
   discount_total numeric(10, 2) not null default 0,
   discount_note text,
   paid_by text,
-  receipt_path text,
+  receipt_path text unique,
   receipt_name text,
   notes text,
   author_name text,
@@ -160,7 +160,7 @@ create table public.purchase_items (
   purchase_id uuid not null references public.purchases on delete cascade,
   name text not null,
   brand text,
-  quantity numeric(10, 2) not null default 1,
+  quantity numeric(12, 3) not null default 1,
   unit text,
   unit_price numeric(10, 2) not null default 0,
   discount numeric(10, 2) not null default 0,
@@ -331,12 +331,31 @@ create policy "edit purchases" on public.purchases for update using (created_by 
 create policy "delete purchases" on public.purchases for delete using (created_by = auth.uid() or is_lead(committee_id));
 
 create policy "staff read items" on public.purchase_items for select using (is_staff());
-create policy "staff add items" on public.purchase_items for insert with check (is_staff());
--- Alla volontärer får uppdatera förvaringsplats/status i inventarielistan
-create policy "staff update items" on public.purchase_items for update using (is_staff());
+create policy "add items" on public.purchase_items for insert with check (
+  exists (select 1 from public.purchases p where p.id = purchase_id and (p.created_by = auth.uid() or is_lead(p.committee_id)))
+);
+-- Alla volontärer får uppdatera förvaringsplats/status i inventarielistan; övriga kolumner spärras av triggern nedan
+create policy "staff update items" on public.purchase_items for update using (is_staff()) with check (is_staff());
 create policy "delete items" on public.purchase_items for delete using (
   exists (select 1 from public.purchases p where p.id = purchase_id and (p.created_by = auth.uid() or is_lead(p.committee_id)))
 );
+
+create or replace function public.guard_purchase_item_update() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  -- Utan inloggad användare (service role, SQL-editorn) gäller ingen spärr; RLS stoppar redan anon
+  if auth.uid() is null or (to_jsonb(new) - 'storage_location' - 'status') = (to_jsonb(old) - 'storage_location' - 'status') then
+    return new;
+  end if;
+  if not exists (select 1 from purchases p where p.id = old.purchase_id and (p.created_by = auth.uid() or is_lead(p.committee_id)))
+     or not exists (select 1 from purchases p where p.id = new.purchase_id and (p.created_by = auth.uid() or is_lead(p.committee_id))) then
+    raise exception 'Bara den som registrerade inköpet eller kommitténs ansvarige får ändra produktraden' using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+create trigger purchase_items_guard before update on public.purchase_items
+  for each row execute function public.guard_purchase_item_update();
 
 -- Flödesräkning
 create policy "staff read counts" on public.flow_counts for select using (is_staff());
@@ -358,21 +377,59 @@ create or replace function public.register_kids(payload jsonb) returns int
 language plpgsql security definer set search_path = public as $$
 declare
   n int;
+  kids jsonb;
+  ds date[];
+  dj jsonb := case when jsonb_typeof(payload -> 'days') = 'array' then payload -> 'days' else '[]' end;
 begin
   if coalesce(trim(payload ->> 'guardian_name'), '') = '' or coalesce(trim(payload ->> 'guardian_phone'), '') = '' then
     raise exception 'Namn och telefon krävs';
   end if;
-  if jsonb_typeof(payload -> 'children') <> 'array' or jsonb_array_length(payload -> 'children') = 0
+  if coalesce(jsonb_typeof(payload -> 'children'), '') <> 'array' or jsonb_array_length(payload -> 'children') = 0
      or jsonb_array_length(payload -> 'children') > 10 then
     raise exception 'Minst ett barn krävs';
   end if;
+  if exists (
+    select 1 from jsonb_array_elements(payload -> 'children') c
+    where jsonb_typeof(c) <> 'object'
+       or jsonb_typeof(c -> 'name') is distinct from 'string'
+       or trim(c ->> 'name') = ''
+       or char_length(trim(c ->> 'name')) > 120
+       or case jsonb_typeof(c -> 'age')
+            when 'number' then (c ->> 'age')::numeric not between 0 and 17 or (c ->> 'age')::numeric % 1 <> 0
+            when 'null' then false
+            else c -> 'age' is not null
+          end
+       or case jsonb_typeof(c -> 'allergies')
+            when 'string' then char_length(trim(c ->> 'allergies')) > 300
+            when 'null' then false
+            else c -> 'allergies' is not null
+          end
+  ) then
+    raise exception 'Ogiltiga uppgifter om barnen';
+  end if;
+  select jsonb_agg(jsonb_build_object(
+           'name', trim(c ->> 'name'),
+           'age', case when jsonb_typeof(c -> 'age') = 'number' then (c ->> 'age')::numeric::int end,
+           'allergies', coalesce(trim(c ->> 'allergies'), '')
+         ) order by ord)
+    into kids
+    from jsonb_array_elements(payload -> 'children') with ordinality t(c, ord);
+  if coalesce(jsonb_typeof(payload -> 'days'), 'null') not in ('array', 'null')
+     or exists (select 1 from jsonb_array_elements(dj) d where jsonb_typeof(d) <> 'string' or (d #>> '{}') !~ '^\d{4}-\d{2}-\d{2}$') then
+    raise exception 'Ogiltiga dagar';
+  end if;
+  begin
+    ds := array(select distinct x::date from jsonb_array_elements_text(dj) x order by 1);
+  exception when others then
+    raise exception 'Ogiltiga dagar';
+  end;
   insert into kids_registrations (guardian_name, guardian_phone, guardian_email, children, days, pickup_names, notes, photo_consent, lang)
   values (
     left(trim(payload ->> 'guardian_name'), 120),
     left(trim(payload ->> 'guardian_phone'), 40),
     nullif(left(trim(payload ->> 'guardian_email'), 120), ''),
-    payload -> 'children',
-    coalesce(array(select jsonb_array_elements_text(payload -> 'days'))::date[], '{}'),
+    kids,
+    ds,
     nullif(left(payload ->> 'pickup_names', 300), ''),
     nullif(left(payload ->> 'notes', 1000), ''),
     coalesce((payload ->> 'photo_consent')::boolean, false),
@@ -395,3 +452,10 @@ create policy "staff upload files" on storage.objects for insert
   with check (bucket_id in ('notes', 'receipts') and public.is_staff());
 create policy "staff delete files" on storage.objects for delete
   using (bucket_id in ('notes', 'receipts') and (owner = auth.uid() or public.is_admin()));
+-- Den som får ändra inköpet får också ta bort dess kvitto
+create policy "purchase editors delete receipts" on storage.objects for delete
+  using (bucket_id = 'receipts' and exists (
+    select 1 from public.purchases p
+    where p.receipt_path = storage.objects.name
+      and (p.created_by = auth.uid() or public.is_lead(p.committee_id))
+  ));

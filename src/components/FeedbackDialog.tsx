@@ -1,16 +1,57 @@
-import { useState } from 'react'
+import { useRef, useState, useSyncExternalStore } from 'react'
 import { Star } from 'lucide-react'
 import { api } from '../lib/api'
 import { uuid } from '../lib/db'
 import { tr } from '../lib/format'
-import { deviceId, useLocalStorage } from '../lib/hooks'
+import { deviceId } from '../lib/hooks'
 import { useI18n } from '../lib/i18n'
 import type { FeedbackAnswers, Session } from '../lib/types'
 import { Button, ErrorText, Modal, Textarea, cx } from './ui'
 
+// En gemensam lista för hela sidan, så att programlistan och anslaget alltid visar samma sak.
+const RATED_KEY = 'vk-rated'
+let ratedCache: string[] | null = null
+const ratedListeners = new Set<() => void>()
+
+function loadRated(): string[] {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(RATED_KEY) ?? '[]')
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+const getRated = () => (ratedCache ??= loadRated())
+
+// Lyssnar alltid, så att betyg från andra flikar syns även om ingen lista var monterad just då.
+window.addEventListener('storage', (e) => {
+  if (e.key !== RATED_KEY && e.key !== null) return
+  ratedCache = null
+  ratedListeners.forEach((l) => l())
+})
+
+function subscribeRated(cb: () => void) {
+  ratedListeners.add(cb)
+  return () => {
+    ratedListeners.delete(cb)
+  }
+}
+
+function markRated(id: string) {
+  // Slå ihop med det som redan ligger sparat (t.ex. från en annan flik) så att inget skrivs över.
+  ratedCache = [...new Set([...getRated(), ...loadRated(), id])]
+  try {
+    localStorage.setItem(RATED_KEY, JSON.stringify(ratedCache))
+  } catch {
+    /* privat läge */
+  }
+  ratedListeners.forEach((l) => l())
+}
+
 export function useRated() {
-  const [rated, setRated] = useLocalStorage<string[]>('vk-rated', [])
-  return { rated, isRated: (id: string) => rated.includes(id), markRated: (id: string) => setRated([...new Set([...rated, id])]) }
+  const rated = useSyncExternalStore(subscribeRated, getRated)
+  return { rated, isRated: (id: string) => rated.includes(id), markRated }
 }
 
 type Q = { key: keyof FeedbackAnswers; options: string[] }
@@ -29,8 +70,12 @@ export default function FeedbackDialog({ session, onClose, onDone }: { session: 
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [sent, setSent] = useState(false)
+  // Ökas när dialogen stängs, så att ett svar som kommer efteråt inte hamnar i nästa föreläsnings dialog.
+  const gen = useRef(0)
 
   function reset() {
+    gen.current++
+    setBusy(false)
     setRating(0)
     setAnswers({})
     setComment('')
@@ -42,6 +87,8 @@ export default function FeedbackDialog({ session, onClose, onDone }: { session: 
   async function submit() {
     if (!session) return
     if (!rating) return setErr(t.chooseStars)
+    const g = gen.current
+    const current = () => g === gen.current
     setBusy(true)
     setErr(null)
     try {
@@ -50,16 +97,16 @@ export default function FeedbackDialog({ session, onClose, onDone }: { session: 
         { id: uuid(), session_id: session.id, rating, answers, comment: comment.trim() || null, device_id: deviceId(), lang },
         { returning: false },
       )
-      setSent(true)
+      if (current()) setSent(true)
       onDone(session.id)
     } catch (e) {
       // Redan betygsatt från den här enheten räknas som klart
       if (/duplicate|unique/i.test((e as Error).message)) {
-        setSent(true)
+        if (current()) setSent(true)
         onDone(session.id)
-      } else setErr(t.error)
+      } else if (current()) setErr(t.error)
     } finally {
-      setBusy(false)
+      if (current()) setBusy(false)
     }
   }
 

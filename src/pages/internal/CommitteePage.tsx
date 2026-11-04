@@ -444,9 +444,17 @@ function BulkAdd({ open, onClose, committeeId, existing }: { open: boolean; onCl
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
-  const rows = useMemo(() => {
-    const known = new Set(existing.map((v) => v.email).filter(Boolean))
-    return parseLines(text).filter((r) => !r.email || !known.has(r.email))
+  const { rows, skipped } = useMemo(() => {
+    // Samma e-post får bara förekomma en gång i kommittén – även inom det inklistrade
+    const seen = new Set(existing.map((v) => v.email?.toLowerCase()).filter(Boolean))
+    const all = parseLines(text)
+    const rows = all.filter((r) => {
+      if (!r.email) return true
+      if (seen.has(r.email)) return false
+      seen.add(r.email)
+      return true
+    })
+    return { rows, skipped: all.length - rows.length }
   }, [text, existing])
 
   useEffect(() => {
@@ -480,7 +488,10 @@ function BulkAdd({ open, onClose, committeeId, existing }: { open: boolean; onCl
         </Field>
         {rows.length > 0 && (
           <div className="rounded-xl bg-slate-50 p-3 text-sm">
-            <div className="mb-1 font-medium text-slate-700">{rows.length} nya personer:</div>
+            <div className="mb-1 font-medium text-slate-700">
+              {rows.length} nya personer:
+              {skipped > 0 && <span className="font-normal text-slate-500"> ({skipped} dubbletter hoppas över)</span>}
+            </div>
             <ul className="space-y-0.5 text-slate-600">
               {rows.slice(0, 12).map((r, i) => (
                 <li key={i}>

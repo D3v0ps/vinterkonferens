@@ -58,7 +58,7 @@ export function Agenda({ sessions, showFeedback = true }: { sessions: Session[];
   const { isRated, markRated } = useRated()
   const [rating, setRating] = useState<Session | null>(null)
 
-  const nextId = sessions.find((s) => s.kind === 'lecture' && sessionStatus(s, at) === 'upcoming')?.id
+  const nextId = sessions.find((s) => s.kind === 'lecture' && localDate(s.starts_at) === localDate(at) && sessionStatus(s, at) === 'upcoming')?.id
   if (!sessions.length) return <Empty>{t.noProgram}</Empty>
 
   return (
