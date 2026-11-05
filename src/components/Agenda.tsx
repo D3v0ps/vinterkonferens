@@ -1,15 +1,16 @@
 // Delade byggstenar för besökarsidorna: sidrubrik, dagväljare, programlista och anslag.
 import { useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
-import { Check, Clock, MapPin, Moon, Music, Pin, Star } from 'lucide-react'
+import { Check, Clock, MapPin, Music, Pin, Star } from 'lucide-react'
 import { useConference } from '../lib/conference'
 import { tr } from '../lib/format'
 import { useList, useNow } from '../lib/hooks'
 import { Tr, useI18n } from '../lib/i18n'
 import { formatShortDay, localDate, localTime, minutesBetween, relMinutes, sessionProgress, sessionStatus } from '../lib/time'
-import type { Audience, ConferenceDay, Post, PostPage, Session } from '../lib/types'
+import type { Audience, ConferenceDay, Lang, Post, PostPage, Session } from '../lib/types'
 import FeedbackDialog, { useRated } from './FeedbackDialog'
 import { Button, Empty, cx } from './ui'
-import { isTalk } from '../lib/sessions'
+import { categoryLabel, isTalk, lectureNumbers } from '../lib/sessions'
+import { SpeakerAvatar } from './SpeakerAvatar'
 
 const ARABIC_SCRIPT = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/
 
@@ -152,82 +153,96 @@ function Progress({ value }: { value: number }) {
   )
 }
 
+/** Punkter som bär programmet (fetstil i schemat): föreläsningar, paneler, aktiviteter och punkter med egen etikett. */
+function isMain(s: Session, lang: Lang) {
+  return isTalk(s) || s.kind === 'activity' || s.kind === 'other' || !!tr(s.label ?? undefined, lang)
+}
+
 /**
- * Programmet som en tryckt programlista: tid till vänster, titel, talare och sal som metadata.
- * Det som varit stryks över, det som pågår markeras med signalfärgen och nästa föreläsning får en etikett.
+ * Programmet som konferensens tryckta schema: typ (Föreläsning 1, Bön, Rast …), tid och titel i tre
+ * kolumner med tunna guldlinjer emellan, och talarens porträtt längst ut. Det som varit stryks över,
+ * det som pågår markeras och nästa föreläsning får en etikett.
  */
 export function Agenda({ sessions, showFeedback = true }: { sessions: Session[]; showFeedback?: boolean }) {
   const { t, lang } = useI18n()
   const at = useNow(15_000)
   const { isRated, markRated } = useRated()
   const [rating, setRating] = useState<Session | null>(null)
+  const numbers = useMemo(() => lectureNumbers(sessions), [sessions])
 
   const nextId = sessions.find((s) => isTalk(s) && localDate(s.starts_at) === localDate(at) && sessionStatus(s, at) === 'upcoming')?.id
   if (!sessions.length) return <Empty>{t.noProgram}</Empty>
 
   return (
     <>
-      <ol className="divide-y divide-line border-y border-line">
+      <ol className="divide-y divide-accent border-y border-accent font-schedule">
         {sessions.map((s) => {
           const st = sessionStatus(s, at)
           const done = st === 'done'
           const ongoing = st === 'ongoing'
           const isNext = s.id === nextId
           const canRate = showFeedback && isTalk(s) && s.feedback_enabled && done
-          const minor = s.kind === 'preshow' || s.kind === 'prayer' || s.kind === 'break' || s.kind === 'meal'
+          const main = isMain(s, lang)
           const description = tr(s.description, lang)
-          const hasMeta = !!(s.speaker || s.room || s.kind === 'preshow' || s.kind === 'prayer')
+          const panel = s.kind === 'panel'
+          const avatar = !!s.speaker && !panel
+          const tone = done ? 'text-muted' : 'text-ink'
           return (
-            <li key={s.id} className={cx('flex gap-4', minor ? 'py-3.5' : 'py-4')} aria-current={ongoing ? 'true' : undefined}>
-              {/* Tidskolumn */}
-              <div className="w-14 shrink-0 tabular-nums">
-                <p className={cx('text-base font-semibold', done ? 'text-muted' : ongoing ? 'text-accent-strong' : 'text-ink')}>
-                  <span dir="ltr">{localTime(s.starts_at)}</span>
+            <li
+              key={s.id}
+              className="grid grid-cols-[7.25rem_minmax(0,1fr)_auto] gap-x-3 py-3.5 sm:grid-cols-[9rem_7.75rem_minmax(0,1fr)_3.5rem] sm:gap-x-5 sm:py-4"
+              aria-current={ongoing ? 'true' : undefined}
+            >
+              {/* Typ och tid: två kolumner på bred skärm, staplade i telefonen */}
+              <div className="contents max-sm:block">
+                <p className={cx('text-base leading-snug break-words sm:text-lg', main ? 'font-semibold' : 'font-normal', tone)}>
+                  {categoryLabel(s, lang, t, numbers)}
                 </p>
-                <p className="text-sm text-muted">
-                  <span dir="ltr">{localTime(s.ends_at)}</span>
+                <p className={cx('text-base leading-snug tabular-nums max-sm:mt-0.5 sm:text-lg', ongoing ? 'font-semibold text-accent-strong' : main ? `font-semibold ${tone}` : tone, done && 'text-muted')}>
+                  <span dir="ltr">
+                    {localTime(s.starts_at)}–{localTime(s.ends_at)}
+                  </span>
                 </p>
               </div>
 
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0">
                 {ongoing && (
-                  <p className="mb-0.5 flex items-center gap-2 text-base font-medium text-accent-strong">
+                  <p className="mb-0.5 flex items-center gap-2 font-sans text-base font-medium text-accent-strong">
                     <LiveDot /> {t.now}
                   </p>
                 )}
                 {isNext && (
-                  <p className="mb-0.5 text-base font-medium text-ink">
+                  <p className="mb-0.5 font-sans text-base font-medium text-ink">
                     {t.next} · {relMinutes(minutesBetween(at, s.starts_at), lang)}
                   </p>
                 )}
                 <h3
                   className={cx(
-                    'leading-snug',
-                    minor ? 'text-base font-medium' : 'text-lg font-semibold',
-                    done ? 'text-muted line-through decoration-1' : minor ? 'text-ink-soft' : 'text-ink',
+                    'text-base leading-snug sm:text-lg',
+                    main ? 'font-semibold' : 'font-normal',
+                    done ? 'text-muted line-through decoration-1' : 'text-ink',
                   )}
                 >
                   {done && <span className="sr-only">{t.done}: </span>}
                   <Tr value={s.title} />
                 </h3>
+                {s.speaker && (
+                  <p className={cx('mt-0.5 font-sans text-base', panel || done ? 'text-muted' : 'text-ink-soft')}>
+                    <bdi>{s.speaker}</bdi>
+                  </p>
+                )}
                 {description && !done && (
-                  <p className="mt-1 text-base text-muted">
+                  <p className="mt-1 font-sans text-base text-muted">
                     <Tr value={s.description} />
                   </p>
                 )}
-                {hasMeta && (
-                  <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-base text-muted">
+                {(s.room || s.kind === 'preshow') && (
+                  <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 font-sans text-base text-muted">
                     {s.kind === 'preshow' && (
                       <span className="inline-flex items-center gap-1.5">
                         <Music className="size-4" aria-hidden /> {t.preshow}
                       </span>
                     )}
-                    {s.kind === 'prayer' && (
-                      <span className="inline-flex items-center gap-1.5 text-ink-soft">
-                        <Moon className="size-4" aria-hidden /> {t.prayer}
-                      </span>
-                    )}
-                    {s.speaker && <span>{s.speaker}</span>}
                     {s.room && (
                       <span className="inline-flex items-center gap-1">
                         <MapPin className="size-4" aria-hidden /> {s.room}
@@ -238,14 +253,18 @@ export function Agenda({ sessions, showFeedback = true }: { sessions: Session[];
                 {ongoing && <Progress value={sessionProgress(s, at)} />}
                 {canRate &&
                   (isRated(s.id) ? (
-                    <p className="mt-2 inline-flex items-center gap-1.5 text-base text-emerald-800">
+                    <p className="mt-2 inline-flex items-center gap-1.5 font-sans text-base text-emerald-800">
                       <Check className="size-4" aria-hidden /> {t.rated}
                     </p>
                   ) : (
-                    <Button variant="secondary" className="mt-3" onClick={() => setRating(s)}>
+                    <Button variant="secondary" className="mt-3 font-sans" onClick={() => setRating(s)}>
                       <Star className="size-5 fill-accent text-accent-strong" aria-hidden /> {t.rate}
                     </Button>
                   ))}
+              </div>
+
+              <div className="flex justify-end">
+                {avatar && <SpeakerAvatar name={s.speaker!} photo={s.speaker_photo} className={cx('size-10 text-sm sm:size-14 sm:text-base', done && 'opacity-60 grayscale')} />}
               </div>
             </li>
           )
@@ -254,6 +273,12 @@ export function Agenda({ sessions, showFeedback = true }: { sessions: Session[];
       <FeedbackDialog session={rating} onClose={() => setRating(null)} onDone={markRated} />
     </>
   )
+}
+
+/** Talarens porträtt i Nu & nästa (inte för paneler, där flera medverkar). */
+function TalkAvatar({ s }: { s: Session }) {
+  if (!s.speaker || s.kind === 'panel') return null
+  return <SpeakerAvatar name={s.speaker} photo={s.speaker_photo} className="size-12 text-base" />
 }
 
 /**
@@ -304,33 +329,52 @@ export function NowNext({ sessions, rateBanner = true }: { sessions: Session[]; 
       <div className="divide-y divide-line border-t border-line">
         {ongoing && (
           <div className="py-4">
-            <p className="flex items-center gap-2 text-base font-medium text-accent-strong">
-              <LiveDot /> {t.now}
-            </p>
-            <p className="mt-1 text-xl leading-snug font-semibold text-ink">
-              <Tr value={ongoing.title} />
-            </p>
-            <p className="mt-0.5 text-base text-muted">
-              {ongoing.speaker && `${ongoing.speaker} · `}
-              {t.ongoingUntil} <span dir="ltr">{localTime(ongoing.ends_at)}</span>
-              {ongoing.room && ` · ${ongoing.room}`}
-            </p>
+            <div className="flex items-start gap-4">
+              <div className="min-w-0 flex-1">
+                <p className="flex items-center gap-2 text-base font-medium text-accent-strong">
+                  <LiveDot /> {t.now}
+                </p>
+                <p className="mt-1 text-xl leading-snug font-semibold text-ink">
+                  <Tr value={ongoing.title} />
+                </p>
+                <p className="mt-0.5 text-base text-muted">
+                  {ongoing.speaker && (
+                    <>
+                      <bdi>{ongoing.speaker}</bdi> ·{' '}
+                    </>
+                  )}
+                  {t.ongoingUntil} <span dir="ltr">{localTime(ongoing.ends_at)}</span>
+                  {ongoing.room && ` · ${ongoing.room}`}
+                </p>
+              </div>
+              <TalkAvatar s={ongoing} />
+            </div>
             <Progress value={sessionProgress(ongoing, at)} />
           </div>
         )}
         {next && (
           <div className="py-4">
-            <p className="flex items-center gap-2 text-base font-medium text-ink">
-              <Clock className="size-4 shrink-0" aria-hidden /> {t.nextLecture} · {relMinutes(minutesBetween(at, next.starts_at), lang)}
-            </p>
-            <p className="mt-1 text-xl leading-snug font-semibold text-ink">
-              <Tr value={next.title} />
-            </p>
-            <p className="mt-0.5 text-base text-muted">
-              <span dir="ltr">{localTime(next.starts_at)}</span>
-              {next.speaker && ` · ${next.speaker}`}
-              {next.room && ` · ${next.room}`}
-            </p>
+            <div className="flex items-start gap-4">
+              <div className="min-w-0 flex-1">
+                <p className="flex items-center gap-2 text-base font-medium text-ink">
+                  <Clock className="size-4 shrink-0" aria-hidden /> {t.nextLecture} · {relMinutes(minutesBetween(at, next.starts_at), lang)}
+                </p>
+                <p className="mt-1 text-xl leading-snug font-semibold text-ink">
+                  <Tr value={next.title} />
+                </p>
+                <p className="mt-0.5 text-base text-muted">
+                  <span dir="ltr">{localTime(next.starts_at)}</span>
+                  {next.speaker && (
+                    <>
+                      {' · '}
+                      <bdi>{next.speaker}</bdi>
+                    </>
+                  )}
+                  {next.room && ` · ${next.room}`}
+                </p>
+              </div>
+              <TalkAvatar s={next} />
+            </div>
             {preshow && sessionStatus(preshow, at) !== 'done' && (
               <p className="mt-2 flex items-center gap-1.5 text-base text-muted">
                 <Music className="size-4 shrink-0" aria-hidden /> <span dir="ltr">{localTime(preshow.starts_at)}</span>

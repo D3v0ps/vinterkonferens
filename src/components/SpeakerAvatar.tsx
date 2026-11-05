@@ -57,7 +57,7 @@ export function SpeakerAvatar({ name, photo, className = 'size-12' }: { name: st
       {url && !failed ? (
         <img src={url} alt="" className="size-full object-cover" onError={() => setFailed(true)} draggable={false} />
       ) : (
-        <span className="font-schedule text-[0.95em] font-semibold tracking-wide">{initials(name)}</span>
+        <span className="font-schedule font-semibold tracking-wide">{initials(name)}</span>
       )}
     </span>
   )

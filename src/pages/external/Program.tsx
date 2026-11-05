@@ -1,8 +1,8 @@
-import { Agenda, DayTabs, NowNext, PageTitle, PostsList, useDaySessions, useSelectedDay } from '../../components/Agenda'
-import { Spinner, cx } from '../../components/ui'
+import { Agenda, DayTabs, DisplayLast, NowNext, PageTitle, PostsList, useDaySessions, useSelectedDay } from '../../components/Agenda'
+import { Spinner } from '../../components/ui'
 import { useConference } from '../../lib/conference'
 import { useI18n } from '../../lib/i18n'
-import { formatShortDay } from '../../lib/time'
+import { formatDay } from '../../lib/time'
 
 const AUD = ['adults', 'all'] as const
 
@@ -22,9 +22,11 @@ export default function Program() {
         <>
           {/* Betygsknappen finns i listan, så Nu & nästa visar ingen egen uppmaning här. */}
           {date === today && <NowNext sessions={sessions} rateBanner={false} />}
-          {/* Dagflikarna visar redan dagen, så rubriken syns bara när det inte finns flikar (skärmläsare får den alltid). */}
+          {/* Dagens rubrik som på den tryckta affischen ("Lördag 27 december"), ovanför hela dagens schema. */}
           {date && (
-            <h2 className={cx('mb-2 text-xl font-semibold text-ink first-letter:uppercase', days.length > 1 && 'sr-only')}>{formatShortDay(date, lang)}</h2>
+            <h2 className="mb-4 text-[1.75rem] leading-tight text-ink first-letter:uppercase sm:text-4xl">
+              <DisplayLast text={formatDay(date, lang).replace(/[,،]/g, '')} />
+            </h2>
           )}
           <Agenda sessions={sessions} />
         </>
