@@ -1,15 +1,20 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CalendarPlus, Copy, Pencil, Timer, Trash2 } from 'lucide-react'
+import { CalendarPlus, Camera, Copy, Image as ImageIcon, Pencil, Send, Timer, Trash2 } from 'lucide-react'
 import { confirmDialog, notify } from '../../components/dialogs'
-import { Button, Checkbox, Empty, ErrorText, Field, Input, LocalizedInput, Modal, PageHeader, Select, Spinner, Tabs } from '../../components/ui'
+import { SchedulePosterDialog } from '../../components/SchedulePoster'
+import { SpeakerAvatar, forgetFileUrl } from '../../components/SpeakerAvatar'
+import { Badge, Button, Checkbox, Empty, ErrorText, Field, Input, LocalizedInput, Modal, PageHeader, Select, Spinner, Tabs } from '../../components/ui'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { useConference } from '../../lib/conference'
+import { safeFileName, uuid } from '../../lib/db'
 import { tr } from '../../lib/format'
 import { useList, useNow } from '../../lib/hooks'
+import { categoryLabel, isTalk, lectureNumbers } from '../../lib/sessions'
+import { templateFor, templateRows } from '../../lib/template2025'
 import { addMinutes, formatShortDay, localDate, localTime, sessionStatus, zonedToUtc } from '../../lib/time'
-import type { Audience, ConferenceDay, Lang, Localized, Session, SessionKind } from '../../lib/types'
+import type { Audience, Lang, Localized, Session, SessionKind } from '../../lib/types'
 
 const KIND_LABEL: Record<SessionKind, string> = {
   lecture: 'Föreläsning',
@@ -17,96 +22,62 @@ const KIND_LABEL: Record<SessionKind, string> = {
   preshow: 'Förprogram',
   prayer: 'Bön',
   activity: 'Aktivitet',
-  break: 'Paus / fika',
+  break: 'Rast / fika',
   meal: 'Måltid',
   other: 'Övrigt',
 }
 const AUDIENCE_LABEL: Record<Audience, string> = { adults: 'Vuxna & ungdomar', kids: 'Barn', all: 'Alla' }
 const LANG_LABEL: Record<Lang, string> = { sv: 'på svenska', en: 'på engelska', ar: 'på arabiska' }
 
-// ---------------------------------------------------------------- Exempelprogram
-// Ett litet program per konferensdag så att ägaren kan se överstrykning, "Nästa" och betyg
-// fungera innan det riktiga programmet finns. Titlarna börjar med "Exempel:" så att de känns igen och
-// tas bort med en knapp. Beskrivningarna är skrivna som riktig besökartext, eftersom de syns på besökarsidan.
-
-const EXAMPLE_PREFIX = 'Exempel:'
-const isExample = (s: Session) => (s.title?.sv ?? '').trim().startsWith(EXAMPLE_PREFIX)
-
-interface ExampleItem {
-  start: string
-  end: string
-  kind: SessionKind
-  audience: Audience
-  room: string
-  title: Localized
-  description: Localized
-  speaker?: string
-  capacity?: number
+// Schemats första kolumn med samma ord som besökarsidan (svenska), t.ex. "Föreläsning 2" eller "Rast".
+const CATEGORY_SV: Record<string, string> = {
+  kind_lecture: 'Föreläsning',
+  kind_panel: 'Panel',
+  kind_prayer: 'Bön',
+  kind_break: 'Rast',
+  kind_meal: 'Mat',
+  kind_preshow: 'Förprogram',
+  kind_activity: 'Aktivitet',
+  kind_other: 'Program',
 }
 
-const POETRY: Localized = { sv: 'Exempel: Förprogram – poesi', en: 'Example: Pre-show – poetry', ar: 'مثال: برنامج تمهيدي – شعر' }
-const POETRY_TEXT: Localized = {
-  sv: 'Dikter på svenska och arabiska medan salen fylls. Kom i god tid och hitta en plats.',
-  en: 'Poems in Swedish and Arabic while the hall fills up. Come early and find a seat.',
-  ar: 'قصائد بالسويدية والعربية بينما تمتلئ القاعة. تعال مبكراً واعثر على مقعد.',
-}
+const norm = (name: string | null | undefined) => (name ?? '').trim().toLocaleLowerCase('sv')
 
-// Upplägget följer konferensen 2025: bönerna är fasta punkter, föreläsningar på 45–60 min med raster
-// emellan, en panel som avslutar dagen och fritids parallellt. Tiderna är exempel och ändras per dag.
-const L = (sv: string, en: string, ar: string): Localized => ({ sv, en, ar })
-const PRAYER_TEXT = L('Bön i bönesalen. Programmet fortsätter efteråt.', 'Prayer in the prayer hall. The programme continues afterwards.', 'الصلاة في قاعة الصلاة. يستمر البرنامج بعدها.')
-const BREAK_TEXT = L('Mat och fika finns att köpa. Menyn finns under Köket.', 'Food and snacks are on sale. See the menu under Kitchen.', 'الطعام والمرطبات متوفرة للشراء. القائمة في قسم المطبخ.')
-const prayer = (start: string, end: string, name: Localized): ExampleItem => ({ start, end, kind: 'prayer', audience: 'all', room: 'Bönesalen', title: name, description: PRAYER_TEXT })
-const pause = (start: string, end: string): ExampleItem => ({ start, end, kind: 'break', audience: 'all', room: 'Café', title: L('Exempel: Rast – mat och fika', 'Example: Break – food and snacks', 'مثال: استراحة – طعام ومرطبات'), description: BREAK_TEXT })
-const lecture = (start: string, end: string, title: Localized, description: Localized): ExampleItem => ({ start, end, kind: 'lecture', audience: 'adults', room: 'Stora salen', capacity: 400, speaker: 'Exempeltalare', title, description })
+/** "Fredag 26 december 2025" → "fredagens". */
+const templateDayName = (name: string) => `${name.split(' ')[0].toLocaleLowerCase('sv')}ens`
 
-const EXAMPLE_DAY: ExampleItem[] = [
-  prayer('12:45', '13:15', L('Exempel: Asr', 'Example: Asr', 'مثال: العصر')),
-  { start: '13:15', end: '13:30', kind: 'preshow', audience: 'adults', room: 'Stora salen', capacity: 400, title: POETRY, description: POETRY_TEXT },
-  lecture('13:30', '14:30', L('Exempel: Föreläsning om gemenskap', 'Example: Lecture on community', 'مثال: محاضرة عن المجتمع'), L('Om att höra till, och om vad vi bär med oss när vi möts. Efteråt finns tid för frågor.', 'On belonging, and on what we bring with us when we meet. Time for questions afterwards.', 'عن الانتماء، وعمّا نحمله معنا عندما نلتقي. يتبعها وقت للأسئلة.')),
-  prayer('15:00', '15:30', L('Exempel: Maghrib', 'Example: Maghrib', 'مثال: المغرب')),
-  pause('15:30', '16:00'),
-  lecture('16:00', '17:00', L('Exempel: Föreläsning om hopp', 'Example: Lecture on hope', 'مثال: محاضرة عن الأمل'), L('Om hopp i svåra tider, med berättelser från deltagarna själva.', 'On hope in hard times, with stories from the participants themselves.', 'عن الأمل في الأوقات الصعبة، مع قصص من المشاركين أنفسهم.')),
-  prayer('18:00', '18:30', L('Exempel: Isha', 'Example: Isha', 'مثال: العشاء')),
-  pause('18:30', '19:00'),
-  lecture('20:00', '21:00', L('Exempel: Panel och frågor', 'Example: Panel and questions', 'مثال: حلقة نقاش وأسئلة'), L('Talarna svarar på publikens frågor. Skicka in din fråga under dagen.', 'The speakers answer questions from the audience. Send in your question during the day.', 'يجيب المتحدثون على أسئلة الجمهور. أرسل سؤالك خلال اليوم.')),
-  {
-    start: '13:30',
-    end: '17:00',
-    kind: 'activity',
-    audience: 'kids',
-    room: 'Fritids',
-    title: L('Exempel: Fritids – pyssel och lek', 'Example: Kids club – crafts and games', 'مثال: نادي الأطفال – أشغال يدوية وألعاب'),
-    description: L('Pyssel, lekar och berättelser för barnen medan de vuxna lyssnar.', 'Crafts, games and stories for the children while the adults listen.', 'أشغال يدوية وألعاب وقصص للأطفال بينما يستمع الكبار.'),
-  },
-  {
-    start: '17:00',
-    end: '20:00',
-    kind: 'activity',
-    audience: 'kids',
-    room: 'Fritids',
-    title: L('Exempel: Fritids – film och fika', 'Example: Kids club – film and snacks', 'مثال: نادي الأطفال – فيلم ومرطبات'),
-    description: L('Film, fika och lugna lekar. Middag ingår.', 'A film, snacks and quiet games. Dinner included.', 'فيلم ومرطبات وألعاب هادئة. العشاء مشمول.'),
-  },
-]
-
-function exampleRows(days: ConferenceDay[]): Partial<Session>[] {
-  return days.flatMap((d) =>
-    EXAMPLE_DAY.map((x) => ({
-      starts_at: zonedToUtc(d.date, x.start).toISOString(),
-      ends_at: zonedToUtc(d.date, x.end).toISOString(),
-      kind: x.kind,
-      audience: x.audience,
-      title: x.title,
-      description: x.description,
-      speaker: x.speaker ?? null,
-      room: x.room,
-      language: x.kind === 'lecture' || x.kind === 'preshow' ? d.default_lang : null,
-      capacity: x.capacity ?? null,
-      published: true,
-      feedback_enabled: x.kind === 'lecture',
-    })),
-  )
+/**
+ * Beskär ett foto till en kvadrat och skalar ner till högst 600 px, som JPEG.
+ * Stående bilder beskärs närmare överkanten, där ansiktet brukar vara.
+ */
+async function squarePhoto(file: Blob): Promise<Blob> {
+  const url = URL.createObjectURL(file)
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const i = new Image()
+      i.onload = () => resolve(i)
+      i.onerror = () => reject(new Error('Bilden kunde inte läsas. Prova en JPG- eller PNG-bild.'))
+      i.src = url
+    })
+    const w = img.naturalWidth
+    const h = img.naturalHeight
+    const side = Math.min(w, h)
+    if (!side) throw new Error('Bilden kunde inte läsas. Prova en JPG- eller PNG-bild.')
+    const size = Math.min(600, side)
+    const canvas = document.createElement('canvas')
+    canvas.width = canvas.height = size
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('Bilden kunde inte bearbetas i den här webbläsaren.')
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, size, size)
+    ctx.imageSmoothingQuality = 'high'
+    ctx.drawImage(img, (w - side) / 2, h > w ? (h - side) * 0.25 : 0, side, side, 0, 0, size, size)
+    return await new Promise<Blob>((resolve, reject) =>
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Bilden kunde inte sparas.'))), 'image/jpeg', 0.85),
+    )
+  } finally {
+    URL.revokeObjectURL(url)
+  }
 }
 
 // ---------------------------------------------------------------- Formulär
@@ -121,14 +92,26 @@ interface Form {
   kind: SessionKind
   audience: Audience
   title: Localized
+  label: Localized
   description: Localized
   speaker: string
+  /** Sparat foto (filväg i lagringen). */
+  speaker_photo: string | null
+  /** Nytt foto som laddas upp när formuläret sparas. */
+  photoBlob: Blob | null
+  photoPreview: string | null
+  /** Fotot som programpunkten hade när formuläret öppnades. */
+  origPhoto: string | null
+  /** Sätt samma foto på andra programpunkter med samma talare. */
+  photoToAll: boolean
   room: string
   language: Lang | ''
   capacity: string
   published: boolean
   feedback_enabled: boolean
 }
+
+const NO_PHOTO = { speaker_photo: null, photoBlob: null, photoPreview: null, origPhoto: null, photoToAll: false }
 
 function toForm(s: Session): Form {
   return {
@@ -139,8 +122,12 @@ function toForm(s: Session): Form {
     kind: s.kind,
     audience: s.audience,
     title: s.title ?? {},
+    label: s.label ?? {},
     description: s.description ?? {},
     speaker: s.speaker ?? '',
+    ...NO_PHOTO,
+    speaker_photo: s.speaker_photo ?? null,
+    origPhoto: s.speaker_photo ?? null,
     room: s.room ?? '',
     language: s.language ?? '',
     capacity: s.capacity != null ? String(s.capacity) : '',
@@ -149,6 +136,12 @@ function toForm(s: Session): Form {
   }
 }
 
+const trimmed = (v: Localized): Localized =>
+  Object.fromEntries(Object.entries(v).flatMap(([k, x]) => (x?.trim() ? [[k, x.trim()]] : []))) as Localized
+
+/** Foton visas inte för paneler (flera medverkande) och kräver ett namn. */
+const takesPhoto = (f: Pick<Form, 'kind' | 'speaker'>) => f.kind !== 'panel' && !!f.speaker.trim()
+
 function fromForm(f: Form): Partial<Session> {
   return {
     starts_at: zonedToUtc(f.date, f.start).toISOString(),
@@ -156,14 +149,27 @@ function fromForm(f: Form): Partial<Session> {
     kind: f.kind,
     audience: f.audience,
     title: f.title,
+    label: trimmed(f.label),
     description: f.description,
     speaker: f.speaker.trim() || null,
+    speaker_photo: takesPhoto(f) ? f.speaker_photo : null,
     room: f.room.trim() || null,
     language: f.language || null,
     capacity: f.capacity ? Number(f.capacity) : null,
     published: f.published,
     feedback_enabled: f.feedback_enabled,
   }
+}
+
+/** Fotot i formuläret: det nyss valda, annars det sparade, annars initialer. */
+function PhotoPreview({ form }: { form: Form }) {
+  if (form.photoPreview)
+    return (
+      <span className="inline-flex size-16 shrink-0 overflow-hidden rounded-full shadow-sm ring-2 ring-white" aria-hidden>
+        <img src={form.photoPreview} alt="" className="size-full object-cover" />
+      </span>
+    )
+  return <SpeakerAvatar name={form.speaker} photo={form.speaker_photo} className="size-16 text-lg" />
 }
 
 export default function ProgramAdmin() {
@@ -174,17 +180,24 @@ export default function ProgramAdmin() {
   const [day, setDay] = useState<string>('')
   const [form, setForm] = useState<Form | null>(null)
   const [busy, setBusy] = useState(false)
-  const [exBusy, setExBusy] = useState(false)
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [photoBusy, setPhotoBusy] = useState(false)
+  const [poster, setPoster] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!day && currentDay) setDay(currentDay.date)
   }, [day, currentDay])
 
+  // Förhandsvisningen av ett nytt foto släpps när formuläret stängs eller fotot byts.
+  const preview = form?.photoPreview
+  useEffect(() => () => void (preview && URL.revokeObjectURL(preview)), [preview])
+
   const list = useMemo(() => sessions.filter((s) => localDate(s.starts_at) === day), [sessions, day])
+  const numbers = useMemo(() => lectureNumbers(list), [list])
+  const drafts = useMemo(() => list.filter((s) => !s.published), [list])
   const rooms = useMemo(() => [...new Set(sessions.map((s) => s.room).filter(Boolean))] as string[], [sessions])
-  const examples = useMemo(() => sessions.filter(isExample), [sessions])
-  const offerExample = auth.isAdmin && !loading && sessions.length === 0
 
   // "+5 min" bara där det går att använda: i varje sal den punkt som pågår, annars nästa – idag
   const t = useNow(30_000)
@@ -204,6 +217,12 @@ export default function ProgramAdmin() {
     return ids
   }, [sessions, t])
 
+  /** Andra programpunkter med samma talare (inte paneler). */
+  const sameSpeaker = (f: Form) => (takesPhoto(f) ? sessions.filter((s) => s.id !== f.id && s.kind !== 'panel' && norm(s.speaker) === norm(f.speaker)) : [])
+  const knownPhoto = form && takesPhoto(form) && !form.speaker_photo && !form.photoBlob ? sameSpeaker(form).find((s) => s.speaker_photo) : undefined
+  const photoChanged = !!form && (!!form.photoBlob || form.speaker_photo !== form.origPhoto)
+  const photoTargets = form && photoChanged && (form.photoBlob || form.speaker_photo) ? sameSpeaker(form).filter((s) => form.photoBlob || s.speaker_photo !== form.speaker_photo) : []
+
   /** Förval för en ny punkt på `date`: efter dagens sista punkt, i samma sal, på dagens språk. */
   function blank(date = day || days[0]?.date || localDate(new Date())): Form {
     const last = sessions.filter((s) => localDate(s.starts_at) === date).at(-1)
@@ -215,8 +234,10 @@ export default function ProgramAdmin() {
       kind: 'lecture',
       audience: 'adults',
       title: {},
+      label: {},
       description: {},
       speaker: '',
+      ...NO_PHOTO,
       room: last?.room ?? 'Stora salen',
       language: days.find((d) => d.date === date)?.default_lang ?? 'sv',
       capacity: last?.capacity != null ? String(last.capacity) : '',
@@ -239,6 +260,30 @@ export default function ProgramAdmin() {
     })
   }
 
+  /** Tar bort foton som ingen programpunkt längre använder. */
+  async function dropUnused(paths: (string | null | undefined)[], stillUsed: Set<string>) {
+    for (const p of new Set(paths)) {
+      if (!p || stillUsed.has(p)) continue
+      forgetFileUrl('speakers', p)
+      await api.removeFile('speakers', p).catch(() => undefined)
+    }
+  }
+
+  async function pickPhoto(file: File | undefined) {
+    if (!file) return
+    setPhotoBusy(true)
+    setErr(null)
+    try {
+      const blob = await squarePhoto(file)
+      const url = URL.createObjectURL(blob)
+      setForm((f) => (f ? { ...f, photoBlob: blob, photoPreview: url, photoToAll: true } : f))
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setPhotoBusy(false)
+    }
+  }
+
   async function save() {
     if (!form) return
     if (!form.title.sv?.trim()) return setErr('Skriv en titel på svenska.')
@@ -247,9 +292,24 @@ export default function ProgramAdmin() {
     setBusy(true)
     setErr(null)
     try {
-      if (form.id) await api.update('sessions', form.id, fromForm(form))
-      else await api.insert('sessions', fromForm(form))
-      setDay(form.date)
+      const f = { ...form }
+      if (f.photoBlob && takesPhoto(f)) {
+        f.speaker_photo = await api.upload('speakers', `${uuid()}-${safeFileName(`${f.speaker.trim().replace(/\./g, '')}.jpg`)}`, f.photoBlob)
+      }
+      const row = fromForm(f)
+      const photo = row.speaker_photo ?? null
+      let id = f.id
+      if (f.id) await api.update('sessions', f.id, row)
+      else id = (await api.insert('sessions', row)).id
+      // Samma foto på talarens andra programpunkter
+      const others = photo && f.photoToAll ? photoTargets : []
+      for (const s of others) await api.update('sessions', s.id, { speaker_photo: photo })
+      const changed = new Set([id, ...others.map((s) => s.id)])
+      const used = new Set(sessions.flatMap((s) => (changed.has(s.id) ? [] : s.speaker_photo ? [s.speaker_photo] : [])))
+      if (photo) used.add(photo)
+      await dropUnused([f.origPhoto, ...others.map((s) => s.speaker_photo)], used)
+      if (others.length) notify(`Fotot används nu i ${others.length + 1} programpunkter med ${f.speaker.trim()}`)
+      setDay(f.date)
       setForm(null)
     } catch (e) {
       setErr((e as Error).message)
@@ -271,6 +331,8 @@ export default function ProgramAdmin() {
     setErr(null)
     try {
       await api.remove('sessions', form.id)
+      const used = new Set(sessions.flatMap((s) => (s.id !== form.id && s.speaker_photo ? [s.speaker_photo] : [])))
+      await dropUnused([form.origPhoto], used)
       setForm(null)
     } catch (e) {
       setErr((e as Error).message)
@@ -282,7 +344,8 @@ export default function ProgramAdmin() {
   function duplicate() {
     if (!form) return
     setErr(null)
-    setForm({ ...form, id: undefined, copyOf: form.title.sv?.trim() || 'programpunkten' })
+    // Kopian delar foto med originalet; inget gammalt foto att städa bort när den sparas.
+    setForm({ ...form, id: undefined, origPhoto: null, photoToAll: false, copyOf: form.title.sv?.trim() || 'programpunkten' })
   }
 
   async function postpone(s: Session) {
@@ -308,40 +371,46 @@ export default function ProgramAdmin() {
     }
   }
 
-  async function addExamples() {
+  /** Förra årets schema som utkast, på alla dagar eller bara på `only`. */
+  async function addTemplate(only?: string) {
+    const targets = days.map((d, i) => ({ d, tpl: templateFor(d, i) })).filter(({ d }) => !only || d.date === only)
+    const rows = templateRows(days).filter((r) => !only || localDate(r.starts_at!) === only)
+    if (!rows.length) return
+    const which = targets.map(({ d, tpl }) => `${formatShortDay(d.date)} får ${templateDayName(tpl.name)} schema`).join(', ')
     const ok = await confirmDialog({
-      title: 'Lägga in exempelprogram?',
-      message: `Varje konferensdag (${days.length} st) får ett förprogram med poesi före varje föreläsning, två föreläsningar, lunch och två barnaktiviteter. Allt syns på besökarsidan med "Exempel:" först i titeln och tas bort med en knapp här.`,
-      confirmLabel: 'Lägg in',
+      title: only ? `Fylla ${formatShortDay(only)} med förra årets schema?` : 'Använda förra årets schema som mall?',
+      message: `Programmet från december 2025 läggs in efter veckodag: ${which}. Det blir ${rows.length} programpunkter med böner, föreläsningar, raster och panel. Allt läggs in som utkast och syns inte för besökarna förrän du publicerar. Titlar och talare är förra årets, så ändra dem punkt för punkt.`,
+      confirmLabel: 'Lägg in utkast',
     })
     if (!ok) return
-    setExBusy(true)
+    setBulkBusy(true)
     try {
-      await api.insertMany('sessions', exampleRows(days))
-      notify('Exempelprogrammet är inlagt')
+      await api.insertMany('sessions', rows)
+      if (!only && targets[0]) setDay((d) => d || targets[0].d.date)
+      notify(`${rows.length} programpunkter är inlagda som utkast`)
     } catch (e) {
       notify((e as Error).message, 'error')
     } finally {
-      setExBusy(false)
+      setBulkBusy(false)
     }
   }
 
-  async function removeExamples() {
+  async function publishDrafts() {
+    const n = drafts.length
     const ok = await confirmDialog({
-      title: `Ta bort ${examples.length} exempelpunkter?`,
-      message: 'Bara programpunkter vars titel börjar med "Exempel:" tas bort. Annat i programmet lämnas kvar.',
-      confirmLabel: 'Ta bort exemplen',
-      danger: true,
+      title: `Publicera ${n} programpunkter?`,
+      message: `De syns direkt i programmet för ${formatShortDay(day)} på besökarsidan.`,
+      confirmLabel: 'Publicera',
     })
     if (!ok) return
-    setExBusy(true)
+    setBulkBusy(true)
     try {
-      for (const s of examples) await api.remove('sessions', s.id)
-      notify('Exempelprogrammet är borttaget')
+      for (const s of drafts) await api.update('sessions', s.id, { published: true })
+      notify(n === 1 ? 'Programpunkten är publicerad' : `${n} programpunkter är publicerade`)
     } catch (e) {
       notify((e as Error).message, 'error')
     } finally {
-      setExBusy(false)
+      setBulkBusy(false)
     }
   }
 
@@ -372,22 +441,26 @@ export default function ProgramAdmin() {
         föreläsningen. Då är publiken på plats när föreläsningen börjar. Effekten syns under Statistik, i räkningen 5 minuter efter start.
       </p>
 
-      {canEdit && examples.length > 0 && (
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-md bg-ice px-4 py-3">
-          <p className="text-base text-ink">Exempelprogrammet ligger inne och syns på besökarsidan.</p>
-          <Button variant="ghost" className="text-rose-700" loading={exBusy} onClick={removeExamples}>
-            <Trash2 className="size-4" aria-hidden /> Ta bort exemplen
-          </Button>
+      {days.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <Tabs value={day} onChange={setDay} options={days.map((d) => ({ value: d.date, label: formatShortDay(d.date) }))} />
+          {day && (
+            <Button variant="secondary" className="ms-auto" onClick={() => setPoster(true)}>
+              <ImageIcon className="size-4" aria-hidden /> Schemabild
+            </Button>
+          )}
         </div>
       )}
 
-      {days.length > 0 && (
-        <Tabs
-          className="mb-4"
-          value={day}
-          onChange={setDay}
-          options={days.map((d) => ({ value: d.date, label: formatShortDay(d.date) }))}
-        />
+      {canEdit && drafts.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-md bg-ice px-4 py-3">
+          <p className="text-base text-ink">
+            {drafts.length === 1 ? '1 programpunkt är utkast' : `${drafts.length} programpunkter är utkast`} och syns inte för besökarna.
+          </p>
+          <Button variant="secondary" loading={bulkBusy} onClick={publishDrafts}>
+            <Send className="size-4" aria-hidden /> {drafts.length === 1 ? 'Publicera' : `Publicera alla ${drafts.length}`}
+          </Button>
+        </div>
       )}
 
       {loading ? (
@@ -395,34 +468,46 @@ export default function ProgramAdmin() {
       ) : list.length === 0 ? (
         <div className="space-y-8">
           <Empty>Inga programpunkter den här dagen.</Empty>
-          {offerExample && (
-            <section className="max-w-[65ch]">
-              <h2 className="text-lg font-semibold text-ink">Vill du se hur det fungerar först?</h2>
-              <p className="mt-1 text-base text-muted">
-                Ett litet exempelprogram för varje dag visar hur avklarade punkter stryks över, vad som är nästa och hur besökarna betygsätter
-                föreläsningar.
+          {canEdit &&
+            (days.length === 0 ? (
+              <p className="max-w-[65ch] text-base text-ink">
+                Lägg först in konferensdagarna under{' '}
+                <Link to="/intern/installningar" className="font-medium underline underline-offset-4 hover:text-ink-soft">
+                  Inställningar
+                </Link>
+                .
               </p>
-              {days.length > 0 ? (
-                <Button variant="secondary" className="mt-3" loading={exBusy} onClick={addExamples}>
-                  Lägg in exempelprogram
-                </Button>
-              ) : (
-                <p className="mt-3 text-base text-ink">
-                  Lägg först in konferensdagarna under{' '}
-                  <Link to="/intern/installningar" className="font-medium underline underline-offset-4 hover:text-ink-soft">
-                    Inställningar
-                  </Link>
-                  .
+            ) : sessions.length === 0 ? (
+              <section className="max-w-[65ch]">
+                <h2 className="text-lg font-semibold text-ink">Börja från förra årets schema</h2>
+                <p className="mt-1 text-base text-muted">
+                  Upplägget brukar vara detsamma varje år: Jumuah och böner, föreläsningar med rast emellan och en panel som avslutar dagen.
+                  Förra årets program läggs in som utkast på varje konferensdag, och du byter titlar och talare innan du publicerar.
                 </p>
-              )}
-            </section>
-          )}
+                <Button variant="secondary" className="mt-3" loading={bulkBusy} onClick={() => addTemplate()}>
+                  Använd förra årets schema som mall
+                </Button>
+              </section>
+            ) : (
+              <section className="max-w-[65ch]">
+                <p className="text-base text-muted">Förra årets program för samma veckodag kan läggas in som utkast och ändras punkt för punkt.</p>
+                <Button variant="secondary" className="mt-3" loading={bulkBusy} onClick={() => addTemplate(day)}>
+                  Fyll dagen med förra årets schema
+                </Button>
+              </section>
+            ))}
         </div>
       ) : (
         <ul className="divide-y divide-line border-y border-line">
           {list.map((s) => {
             const title = tr(s.title, 'sv') || '(utan titel)'
-            const meta = [KIND_LABEL[s.kind], s.audience !== 'adults' && AUDIENCE_LABEL[s.audience], s.speaker, s.room, s.language && LANG_LABEL[s.language]].filter(Boolean)
+            const meta = [
+              categoryLabel(s, 'sv', CATEGORY_SV, numbers),
+              s.speaker,
+              s.audience !== 'adults' && AUDIENCE_LABEL[s.audience],
+              s.room,
+              s.language && LANG_LABEL[s.language],
+            ].filter(Boolean)
             const missing = [!s.title.en?.trim() && 'engelska', !s.title.ar?.trim() && 'arabiska'].filter(Boolean)
             return (
               <li key={s.id} className="flex flex-wrap items-start gap-x-3 gap-y-0.5 py-4 sm:flex-nowrap sm:items-center sm:gap-x-4">
@@ -432,11 +517,12 @@ export default function ProgramAdmin() {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <span className="text-base font-medium text-ink">{title}</span>
-                    {!s.published && <span className="text-base text-muted">(dold för besökare)</span>}
+                    {!s.published && <Badge tone="amber">Utkast</Badge>}
                   </div>
                   <p className="mt-0.5 text-sm text-muted">{meta.join(' · ')}</p>
                   {missing.length > 0 && <p className="text-sm text-muted">Titeln saknas på {missing.join(' och ')}.</p>}
                 </div>
+                {s.speaker && s.kind !== 'panel' && <SpeakerAvatar name={s.speaker} photo={s.speaker_photo} className="size-10 text-sm max-sm:hidden" />}
                 {canEdit && (
                   <div className="-me-2 flex shrink-0 gap-1 max-sm:-mt-2.5">
                     {movable.has(s.id) && (
@@ -469,6 +555,8 @@ export default function ProgramAdmin() {
           })}
         </ul>
       )}
+
+      {day && <SchedulePosterDialog open={poster} onClose={() => setPoster(false)} date={day} />}
 
       <Modal
         open={!!form}
@@ -514,7 +602,7 @@ export default function ProgramAdmin() {
                   value={form.kind}
                   onChange={(e) => {
                     const kind = e.target.value as SessionKind
-                    set({ kind, feedback_enabled: kind === 'lecture' || kind === 'panel' })
+                    set({ kind, feedback_enabled: isTalk({ kind }) })
                   }}
                 >
                   {Object.entries(KIND_LABEL).map(([k, v]) => (
@@ -535,9 +623,18 @@ export default function ProgramAdmin() {
               </Field>
             </div>
             <LocalizedInput label="Titel" required value={form.title} onChange={(title) => set({ title })} />
+            <LocalizedInput
+              label="Egen etikett i schemat (valfritt)"
+              hint={`Lämna tom för att visa typen, t.ex. "${CATEGORY_SV[`kind_${form.kind}`]}${form.kind === 'lecture' ? ' 2' : ''}". Fyll i för t.ex. Jumuah eller Start.`}
+              value={form.label}
+              onChange={(label) => set({ label })}
+            />
             <LocalizedInput label="Beskrivning (valfritt)" multiline value={form.description} onChange={(description) => set({ description })} />
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Talare (valfritt)">
+              <Field
+                label={form.kind === 'panel' ? 'Medverkande (valfritt)' : 'Talare (valfritt)'}
+                hint={form.kind === 'panel' ? 'Skriv namnen med kommatecken emellan.' : undefined}
+              >
                 <Input value={form.speaker} onChange={(e) => set({ speaker: e.target.value })} />
               </Field>
               <Field label="Sal eller plats (valfritt)">
@@ -548,6 +645,58 @@ export default function ProgramAdmin() {
                   ))}
                 </datalist>
               </Field>
+            </div>
+            {takesPhoto(form) && (
+              <section className="rounded-md border border-line px-4 py-3" aria-label="Talarens foto">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+                  <PhotoPreview form={form} />
+                  <div className="min-w-0 flex-1 basis-48">
+                    <p className="text-base font-medium text-ink">Talarens foto (valfritt)</p>
+                    <p className="text-base text-muted">Visas som rund bild i schemat. Bilden beskärs till en kvadrat.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <input
+                      ref={fileRef}
+                      type="file"
+                      accept="image/*"
+                      className="sr-only"
+                      tabIndex={-1}
+                      aria-hidden
+                      onChange={(e) => {
+                        void pickPhoto(e.target.files?.[0])
+                        e.target.value = ''
+                      }}
+                    />
+                    <Button type="button" variant="secondary" loading={photoBusy} onClick={() => fileRef.current?.click()}>
+                      <Camera className="size-4" aria-hidden /> {form.speaker_photo || form.photoBlob ? 'Byt foto' : 'Välj foto'}
+                    </Button>
+                    {(form.speaker_photo || form.photoBlob) && (
+                      <Button type="button" variant="ghost" className="text-rose-700" onClick={() => set({ speaker_photo: null, photoBlob: null, photoPreview: null, photoToAll: false })}>
+                        Ta bort foto
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                {knownPhoto && (
+                  <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line pt-3">
+                    <SpeakerAvatar name={form.speaker} photo={knownPhoto.speaker_photo} className="size-10 text-sm" />
+                    <p className="min-w-0 flex-1 text-base text-ink">Det finns redan ett foto på {form.speaker.trim()}.</p>
+                    <Button type="button" variant="secondary" onClick={() => set({ speaker_photo: knownPhoto.speaker_photo ?? null })}>
+                      Använd det
+                    </Button>
+                  </div>
+                )}
+                {photoTargets.length > 0 && (
+                  <Checkbox
+                    className="mt-3"
+                    label={`Använd fotot också i ${photoTargets.length === 1 ? 'den andra programpunkten' : `de ${photoTargets.length} andra programpunkterna`} med ${form.speaker.trim()}`}
+                    checked={form.photoToAll}
+                    onChange={(photoToAll) => set({ photoToAll })}
+                  />
+                )}
+              </section>
+            )}
+            <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Språk (valfritt)">
                 <Select value={form.language} onChange={(e) => set({ language: e.target.value as Lang | '' })}>
                   <option value="">–</option>
