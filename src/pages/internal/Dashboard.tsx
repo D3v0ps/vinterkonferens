@@ -13,6 +13,7 @@ import { CHECKPOINT_LABEL } from '../../components/stats/labels'
 import { shiftState } from '../../components/internal-core/shifts'
 import { ShiftItem, useMyShifts } from '../../components/internal-core/MyShifts'
 import { PostCard } from './Posts'
+import { isTalk } from '../../lib/sessions'
 
 const POSTS_Q = {
   filters: [eq('audience', 'internal'), eq('published', true)],
@@ -119,7 +120,7 @@ function CountLink({ at, ordning, koket, mine, koketId }: { at: Date; ordning: b
   // Dagens nästa publikräkning som inte är gjord (eller som nyss skulle ha gjorts)
   const next = ordning
     ? sessions.data
-        .filter((s) => s.kind === 'lecture' && localDate(s.starts_at) === today)
+        .filter((s) => isTalk(s) && localDate(s.starts_at) === today)
         .flatMap((s) => checkpointsFor(s).map((c) => ({ s, ...c, since: (at.getTime() - c.at.getTime()) / 60_000 })))
         .filter((c) => c.since <= 10 && !counts.data.some((r) => r.session_id === c.s.id && r.checkpoint === c.key))
         .sort((a, b) => a.at.getTime() - b.at.getTime())[0]

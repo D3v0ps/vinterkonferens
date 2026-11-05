@@ -13,6 +13,7 @@ import type { Audience, ConferenceDay, Lang, Localized, Session, SessionKind } f
 
 const KIND_LABEL: Record<SessionKind, string> = {
   lecture: 'Föreläsning',
+  panel: 'Panel',
   preshow: 'Förprogram',
   prayer: 'Bön',
   activity: 'Aktivitet',
@@ -513,7 +514,7 @@ export default function ProgramAdmin() {
                   value={form.kind}
                   onChange={(e) => {
                     const kind = e.target.value as SessionKind
-                    set({ kind, feedback_enabled: kind === 'lecture' })
+                    set({ kind, feedback_enabled: kind === 'lecture' || kind === 'panel' })
                   }}
                 >
                   {Object.entries(KIND_LABEL).map(([k, v]) => (

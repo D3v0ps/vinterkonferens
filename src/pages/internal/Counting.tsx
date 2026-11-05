@@ -10,6 +10,7 @@ import { tr } from '../../lib/format'
 import { useList, useNow } from '../../lib/hooks'
 import { checkpointsFor, formatShortDay, localDate, localTime, now, relMinutes, zonedToUtc } from '../../lib/time'
 import type { Checkpoint, FlowCount, KitchenCategory, KitchenEvent, Session } from '../../lib/types'
+import { isTalk } from '../../lib/sessions'
 
 export default function Counting() {
   const a = useAuth()
@@ -76,7 +77,7 @@ function HallCounting() {
     return () => clearInterval(i)
   }, [sessionsError, countsError, reloadSessions, reloadCounts])
 
-  const lectures = (date: string) => sessions.data.filter((s) => s.kind === 'lecture' && localDate(s.starts_at) === date)
+  const lectures = (date: string) => sessions.data.filter((s) => isTalk(s) && localDate(s.starts_at) === date)
   const find = (sid: string, cp: Checkpoint) => counts.data.filter((c) => c.session_id === sid && c.checkpoint === cp).at(-1)
 
   // Nästa räkning bland dagens föreläsningar (även om en annan dag visas)

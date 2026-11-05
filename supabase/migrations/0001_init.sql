@@ -81,11 +81,13 @@ create table public.sessions (
   id uuid primary key default gen_random_uuid(),
   starts_at timestamptz not null,
   ends_at timestamptz not null check (ends_at > starts_at),
-  kind text not null default 'lecture' check (kind in ('lecture', 'preshow', 'prayer', 'activity', 'break', 'meal', 'other')),
+  kind text not null default 'lecture' check (kind in ('lecture', 'panel', 'preshow', 'prayer', 'activity', 'break', 'meal', 'other')),
   audience text not null default 'adults' check (audience in ('adults', 'kids', 'all')),
   title jsonb not null default '{}',
   description jsonb not null default '{}',
   speaker text,
+  speaker_photo text,
+  label jsonb not null default '{}',
   room text,
   language text check (language in ('sv', 'en', 'ar')),
   capacity int,
@@ -443,7 +445,7 @@ grant execute on function public.register_kids(jsonb) to anon, authenticated;
 
 -- ---------------------------------------------------------------- fillagring
 insert into storage.buckets (id, name, public, file_size_limit)
-values ('notes', 'notes', false, 52428800), ('receipts', 'receipts', false, 20971520)
+values ('notes', 'notes', false, 52428800), ('receipts', 'receipts', false, 20971520), ('speakers', 'speakers', true, 5242880)
 on conflict (id) do nothing;
 
 create policy "staff read files" on storage.objects for select
@@ -459,3 +461,10 @@ create policy "purchase editors delete receipts" on storage.objects for delete
     where p.receipt_path = storage.objects.name
       and (p.created_by = auth.uid() or public.is_lead(p.committee_id))
   ));
+
+-- Talarfoton visas för alla besökare; bara de som redigerar programmet laddar upp
+create policy "anyone reads speaker photos" on storage.objects for select using (bucket_id = 'speakers');
+create policy "program editors upload speaker photos" on storage.objects for insert
+  with check (bucket_id = 'speakers' and public.is_lead_of(array['forelasningar', 'konferencierer', 'fritids']));
+create policy "program editors delete speaker photos" on storage.objects for delete
+  using (bucket_id = 'speakers' and public.is_lead_of(array['forelasningar', 'konferencierer', 'fritids']));

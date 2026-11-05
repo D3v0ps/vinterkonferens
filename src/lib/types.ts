@@ -76,7 +76,7 @@ export interface Shift {
   created_at?: string
 }
 
-export type SessionKind = 'lecture' | 'preshow' | 'prayer' | 'activity' | 'break' | 'meal' | 'other'
+export type SessionKind = 'lecture' | 'panel' | 'preshow' | 'prayer' | 'activity' | 'break' | 'meal' | 'other'
 export type Audience = 'adults' | 'kids' | 'all'
 
 export interface Session {
@@ -88,6 +88,10 @@ export interface Session {
   title: Localized
   description: Localized
   speaker: string | null
+  /** Talarens porträtt (filväg i lagringen), visas som rund bild i schemat. */
+  speaker_photo?: string | null
+  /** Egen etikett i schemats första kolumn, t.ex. "Jumuah" eller "Start". Tom = typens namn. */
+  label?: Localized | null
   room: string | null
   language: Lang | null
   capacity: number | null

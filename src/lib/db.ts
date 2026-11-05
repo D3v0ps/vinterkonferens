@@ -19,7 +19,7 @@ export interface Query {
 export const where = (col: string, op: Op, value: unknown): Filter => ({ col, op, value })
 export const eq = (col: string, value: unknown): Filter => ({ col, op: 'eq', value })
 
-export type Bucket = 'notes' | 'receipts'
+export type Bucket = 'notes' | 'receipts' | 'speakers'
 
 export interface DataAdapter {
   mode: 'supabase' | 'demo' | 'artifact'

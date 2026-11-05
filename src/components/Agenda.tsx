@@ -9,6 +9,7 @@ import { formatShortDay, localDate, localTime, minutesBetween, relMinutes, sessi
 import type { Audience, ConferenceDay, Post, PostPage, Session } from '../lib/types'
 import FeedbackDialog, { useRated } from './FeedbackDialog'
 import { Button, Empty, cx } from './ui'
+import { isTalk } from '../lib/sessions'
 
 const ARABIC_SCRIPT = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/
 
@@ -161,7 +162,7 @@ export function Agenda({ sessions, showFeedback = true }: { sessions: Session[];
   const { isRated, markRated } = useRated()
   const [rating, setRating] = useState<Session | null>(null)
 
-  const nextId = sessions.find((s) => s.kind === 'lecture' && localDate(s.starts_at) === localDate(at) && sessionStatus(s, at) === 'upcoming')?.id
+  const nextId = sessions.find((s) => isTalk(s) && localDate(s.starts_at) === localDate(at) && sessionStatus(s, at) === 'upcoming')?.id
   if (!sessions.length) return <Empty>{t.noProgram}</Empty>
 
   return (
@@ -172,7 +173,7 @@ export function Agenda({ sessions, showFeedback = true }: { sessions: Session[];
           const done = st === 'done'
           const ongoing = st === 'ongoing'
           const isNext = s.id === nextId
-          const canRate = showFeedback && s.kind === 'lecture' && s.feedback_enabled && done
+          const canRate = showFeedback && isTalk(s) && s.feedback_enabled && done
           const minor = s.kind === 'preshow' || s.kind === 'prayer' || s.kind === 'break' || s.kind === 'meal'
           const description = tr(s.description, lang)
           const hasMeta = !!(s.speaker || s.room || s.kind === 'preshow' || s.kind === 'prayer')
@@ -266,7 +267,7 @@ export function NowNext({ sessions, rateBanner = true }: { sessions: Session[]; 
   const { isRated, markRated } = useRated()
   const [rating, setRating] = useState<Session | null>(null)
   const headingId = useId()
-  const lectures = sessions.filter((s) => s.kind === 'lecture')
+  const lectures = sessions.filter(isTalk)
   if (!lectures.length) return null
   const ongoing = lectures.find((s) => sessionStatus(s, at) === 'ongoing')
   const next = lectures.find((s) => sessionStatus(s, at) === 'upcoming')

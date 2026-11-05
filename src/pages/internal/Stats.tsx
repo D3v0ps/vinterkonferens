@@ -9,6 +9,7 @@ import { downloadCsv, num, tr } from '../../lib/format'
 import { useList } from '../../lib/hooks'
 import { formatShortDate, formatShortDay, localDate, localTime, shiftTime, todayStr, zonedToUtc } from '../../lib/time'
 import type { Feedback, FlowCount, KitchenCategory, KitchenEvent, Session } from '../../lib/types'
+import { isTalk } from '../../lib/sessions'
 
 type Tab = 'hall' | 'kitchen' | 'feedback'
 const MAIN = ['start_plus_5', 'midpoint', 'end_minus_5'] as const
@@ -27,7 +28,7 @@ export default function Stats() {
   const events = useList('kitchen_events', { filters: [where('occurred_at', 'gte', from), where('occurred_at', 'lte', to)] }, { pollMs: 60_000 })
 
   const title = (id: string | null) => tr(sessions.data.find((s) => s.id === id)?.title, 'sv')
-  const lectures = sessions.data.filter((s) => s.kind === 'lecture' && localDate(s.starts_at) === selected)
+  const lectures = sessions.data.filter((s) => isTalk(s) && localDate(s.starts_at) === selected)
 
   // Nedladdningar längst ner på sidan, så att sidhuvudet bara har rubriken. Knappar utan data visas inte.
   const hasDownloads = counts.data.length > 0 || events.data.length > 0 || feedback.data.length > 0
