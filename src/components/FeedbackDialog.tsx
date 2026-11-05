@@ -2,10 +2,9 @@ import { useRef, useState, useSyncExternalStore } from 'react'
 import { Check, CheckCircle2, Star } from 'lucide-react'
 import { api } from '../lib/api'
 import { uuid } from '../lib/db'
-import { tr } from '../lib/format'
 import { deviceId } from '../lib/hooks'
 import { safeStorage } from '../lib/platform'
-import { useI18n } from '../lib/i18n'
+import { Tr, errorText, useI18n } from '../lib/i18n'
 import type { FeedbackAnswers, Session } from '../lib/types'
 import { Button, ErrorText, Modal, Textarea, cx } from './ui'
 
@@ -45,6 +44,17 @@ function markRated(id: string) {
   safeStorage.set(RATED_KEY, JSON.stringify(ratedCache))
   ratedListeners.forEach((l) => l())
 }
+
+/**
+ * Den som betygsätter: ett anonymt id för enheten. Betyg kopplas aldrig till personens konto.
+ * (Är lagringen blockerad gäller id:t bara tills sidan laddas om.)
+ */
+async function raterId(): Promise<string> {
+  return deviceId()
+}
+
+// Utan Supabase finns ingen unik nyckel i databasen, så betyget får ett id per föreläsning och betygsättare.
+const uniqueIds = () => api.mode !== 'supabase'
 
 export function useRated() {
   const rated = useSyncExternalStore(subscribeRated, getRated)
@@ -89,11 +99,16 @@ export default function FeedbackDialog({ session, onClose, onDone }: { session: 
     setBusy(true)
     setErr(null)
     try {
-      await api.insert(
-        'feedback',
-        { id: uuid(), session_id: session.id, rating, answers, comment: comment.trim() || null, device_id: deviceId(), lang },
-        { returning: false },
-      )
+      const rater = await raterId()
+      const id = uniqueIds() ? `${session.id}_${rater}` : uuid()
+      // Finns betyget redan (t.ex. efter en omladdning med blockerad lagring) räknas det som klart.
+      if (!uniqueIds() || !(await api.get('feedback', id))) {
+        await api.insert(
+          'feedback',
+          { id, session_id: session.id, rating, answers, comment: comment.trim() || null, device_id: rater, lang },
+          { returning: false },
+        )
+      }
       if (current()) setSent(true)
       onDone(session.id)
     } catch (e) {
@@ -101,7 +116,7 @@ export default function FeedbackDialog({ session, onClose, onDone }: { session: 
       if (/duplicate|unique/i.test((e as Error).message)) {
         if (current()) setSent(true)
         onDone(session.id)
-      } else if (current()) setErr(t.error)
+      } else if (current()) setErr(errorText(e, t))
     } finally {
       if (current()) setBusy(false)
     }
@@ -123,7 +138,9 @@ export default function FeedbackDialog({ session, onClose, onDone }: { session: 
         ) : (
           <div className="space-y-6">
             <div>
-              <p className="text-lg leading-snug font-semibold text-ink">{tr(session.title, lang)}</p>
+              <p className="text-lg leading-snug font-semibold text-ink">
+                <Tr value={session.title} />
+              </p>
               <p className="mt-1 text-base text-muted">{t.feedbackHint}</p>
             </div>
 

@@ -5,7 +5,7 @@ import { Empty, Spinner, cx } from '../../components/ui'
 import { useConference } from '../../lib/conference'
 import { kr, tr } from '../../lib/format'
 import { useList } from '../../lib/hooks'
-import { useI18n } from '../../lib/i18n'
+import { Tr, useI18n } from '../../lib/i18n'
 import type { MenuCategory, MenuItem } from '../../lib/types'
 
 const CATS: MenuCategory[] = ['food', 'coffee', 'drinks', 'snacks', 'dessert']
@@ -24,7 +24,9 @@ export default function Kitchen() {
           <Clock className="mt-1 size-5 shrink-0 text-muted" aria-hidden />
           <div className="min-w-0">
             <h2 className="text-base font-semibold text-ink">{t.openingHours}</h2>
-            <p className="text-base whitespace-pre-line">{hours}</p>
+            <p className="text-base whitespace-pre-line">
+              <Tr value={settings.kitchen_info} />
+            </p>
           </div>
         </div>
       )}
@@ -64,7 +66,9 @@ function PriceRow({ item: m, label }: { item: MenuItem; label: (k: string) => st
   return (
     <li className="py-3">
       <div className="flex items-end gap-2">
-        <span className={cx('min-w-0 text-lg leading-snug font-medium', sold ? 'text-muted line-through decoration-1' : 'text-ink')}>{tr(m.name, lang)}</span>
+        <span className={cx('min-w-0 text-lg leading-snug font-medium', sold ? 'text-muted line-through decoration-1' : 'text-ink')}>
+          <Tr value={m.name} />
+        </span>
         {(sold || hasPrice) && (
           <>
             <span className="mb-[0.45em] min-w-6 flex-1 border-b-2 border-dotted border-muted/35" aria-hidden />
@@ -78,7 +82,11 @@ function PriceRow({ item: m, label }: { item: MenuItem; label: (k: string) => st
           </>
         )}
       </div>
-      {description && <p className="mt-0.5 text-base text-muted">{description}</p>}
+      {description && (
+        <p className="mt-0.5 text-base text-muted">
+          <Tr value={m.description} />
+        </p>
+      )}
       {!!m.tags.length && (
         <p className="mt-0.5 text-sm text-muted">
           {m.tags.map((tag, i) => (

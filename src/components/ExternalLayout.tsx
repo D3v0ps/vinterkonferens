@@ -1,10 +1,12 @@
-import { Baby, CalendarDays, Coffee, Home, LogIn } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { ArrowLeft, Baby, CalendarDays, ClipboardList, Coffee, Home, LogIn } from 'lucide-react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useConference } from '../lib/conference'
 import { I18nProvider, LANG_LABEL, LANG_SHORT, useI18n } from '../lib/i18n'
 import { LANGS } from '../lib/types'
-import { cx } from './ui'
+import { Button, cx } from './ui'
 import DemoBar from './DemoBar'
+import { DisplayLast } from './Agenda'
 
 export default function ExternalLayout() {
   const { defaultLang } = useConference()
@@ -12,6 +14,62 @@ export default function ExternalLayout() {
     <I18nProvider fallback={defaultLang}>
       <Shell />
     </I18nProvider>
+  )
+}
+
+/**
+ * Visas när någon som inte är volontär öppnar /intern (InternalLayout ritar den): besökarsidans ram
+ * med meny och språkval, på besökarens språk, så att det alltid finns en väg tillbaka.
+ * `children` är extra knappar, t.ex. "Sluta visa som …" när en admin förhandsgranskar.
+ */
+export function NotVolunteer({ email, onSignOut, children }: { email: string | null; onSignOut?: () => void; children?: ReactNode }) {
+  const { defaultLang } = useConference()
+  return (
+    <I18nProvider fallback={defaultLang}>
+      <Shell staffLink={false}>
+        <NotVolunteerBody email={email} onSignOut={onSignOut}>
+          {children}
+        </NotVolunteerBody>
+      </Shell>
+    </I18nProvider>
+  )
+}
+
+function NotVolunteerBody({ email, onSignOut, children }: { email: string | null; onSignOut?: () => void; children?: ReactNode }) {
+  const { t } = useI18n()
+  return (
+    <>
+      <ClipboardList className="mb-3 size-9 text-muted" strokeWidth={1.75} aria-hidden />
+      <h1 className="text-[2rem] leading-tight font-semibold tracking-tight text-ink sm:text-4xl">
+        <DisplayLast text={t.notVolunteerTitle} />
+      </h1>
+      <p className="mt-3 max-w-[60ch] text-lg text-ink-soft">
+        {email ? (
+          t.notVolunteerAs(
+            <b className="font-semibold break-all text-ink" dir="ltr">
+              {email}
+            </b>,
+          )
+        ) : (
+          t.notVolunteerNoEmail
+        )}{' '}
+        {t.notVolunteerAsk}
+      </p>
+      <div className="mt-6 flex flex-wrap gap-2">
+        <Link
+          to="/"
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-ink px-4 py-2.5 text-base font-medium text-white transition-colors hover:bg-ink-soft"
+        >
+          <ArrowLeft className="size-4 rtl:-scale-x-100" aria-hidden /> {t.toVisitorSite}
+        </Link>
+        {onSignOut && (
+          <Button variant="secondary" onClick={onSignOut}>
+            {t.signOut}
+          </Button>
+        )}
+        {children}
+      </div>
+    </>
   )
 }
 
@@ -43,7 +101,7 @@ function LanguageSwitch() {
   )
 }
 
-function Shell() {
+function Shell({ children, staffLink = true }: { children?: ReactNode; staffLink?: boolean }) {
   const { t } = useI18n()
   const { settings } = useConference()
   const nav = [
@@ -84,16 +142,18 @@ function Shell() {
       </header>
 
       <main className="mx-auto max-w-3xl px-4 pt-6 pb-12">
-        <Outlet />
+        {children ?? <Outlet />}
       </main>
 
-      <footer className="no-print mx-auto max-w-3xl px-4 pb-6">
-        <div className="border-t border-line pt-3">
-          <Link to="/intern" className="inline-flex min-h-11 items-center gap-2 text-base text-muted hover:text-ink">
-            <LogIn className="size-4 rtl:-scale-x-100" aria-hidden /> {t.staffLogin}
-          </Link>
-        </div>
-      </footer>
+      {staffLink && (
+        <footer className="no-print mx-auto max-w-3xl px-4 pb-6">
+          <div className="border-t border-line pt-3">
+            <Link to="/intern" className="inline-flex min-h-11 items-center gap-2 text-base text-muted hover:text-ink">
+              <LogIn className="size-4 rtl:-scale-x-100" aria-hidden /> {t.staffLogin}
+            </Link>
+          </div>
+        </footer>
+      )}
 
       {/* Mobilnavigering i tumhöjd, ovanför hemknappsfältet */}
       <nav

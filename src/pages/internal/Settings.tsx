@@ -6,7 +6,8 @@ import { Button, Card, ErrorText, Field, Input, LocalizedInput, PageHeader, Sele
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { EMPTY_SETTINGS } from '../../lib/conference'
-import { uuid } from '../../lib/db'
+import { eq, uuid } from '../../lib/db'
+import { pathToHash } from '../../lib/hashRouter'
 import { useList } from '../../lib/hooks'
 import { canPrint, isArtifact, safeStorage, saveFile } from '../../lib/platform'
 import { formatDay } from '../../lib/time'
@@ -22,7 +23,7 @@ export default function SettingsPage() {
     <>
       <PageHeader title="Inställningar" subtitle="Grundinformation som visas på besökarsidan." />
       <Tabs
-        className="mb-5"
+        className="mb-5 max-sm:grid max-sm:grid-cols-2"
         value={tab}
         onChange={setTab}
         options={[
@@ -115,7 +116,7 @@ function Days() {
       {data.length > 0 && (
         <ul className="mt-4 divide-y divide-line border-y border-line">
           {data.map((d) => (
-            <DayRow key={d.id} day={d} />
+            <DayRow key={d.id} day={d} taken={data.filter((x) => x.id !== d.id).map((x) => x.date)} />
           ))}
         </ul>
       )}
@@ -136,6 +137,7 @@ function Days() {
           loading={sv.busy}
           onClick={() =>
             sv.run(async () => {
+              if (data.some((x) => x.date === date)) throw new Error(`${capitalize(formatDay(date))} är redan en konferensdag.`)
               await api.insert('conference_days', { date, default_lang: lang, label: { sv: `Dag ${data.length + 1}`, en: `Day ${data.length + 1}`, ar: `اليوم ${data.length + 1}` } })
               setDate('')
             })
@@ -151,7 +153,9 @@ function Days() {
   )
 }
 
-function DayRow({ day }: { day: ConferenceDay }) {
+const capitalize = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
+
+function DayRow({ day, taken }: { day: ConferenceDay; taken: string[] }) {
   const [d, setD] = useState(day)
   const sv = useSaver()
   async function remove() {
@@ -180,7 +184,17 @@ function DayRow({ day }: { day: ConferenceDay }) {
       </div>
       <LocalizedInput label="Etikett" value={d.label} onChange={(label) => setD({ ...d, label })} />
       <div className="flex flex-wrap gap-2">
-        <Button variant="secondary" loading={sv.busy} onClick={() => sv.run(() => api.update('conference_days', d.id, { date: d.date, default_lang: d.default_lang, label: d.label }))}>
+        <Button
+          variant="secondary"
+          loading={sv.busy}
+          onClick={() =>
+            sv.run(async () => {
+              if (!d.date) throw new Error('Välj ett datum.')
+              if (taken.includes(d.date)) throw new Error(`${capitalize(formatDay(d.date))} är redan en konferensdag.`)
+              await api.update('conference_days', d.id, { date: d.date, default_lang: d.default_lang, label: d.label })
+            })
+          }
+        >
           {sv.ok ? 'Sparat ✓' : 'Spara'}
         </Button>
         <Button variant="danger" onClick={remove}>
@@ -239,17 +253,35 @@ function Committees() {
   )
 }
 
+/**
+ * Tar bort en kommitté som databasen i Supabase gör: volontärer, pass och inlägg försvinner
+ * (on delete cascade) och anteckningar och inköp blir kvar utan kommitté (on delete set null).
+ * Artifactens och demolägets databas gör inte det själva, så där görs det här.
+ * Kommittén tas bort sist, så att ett avbrott kan göras om.
+ */
+async function removeCommittee(id: string) {
+  if (api.mode !== 'supabase') {
+    const of = { filters: [eq('committee_id', id)] }
+    for (const r of await api.list('shifts', of)) await api.remove('shifts', r.id)
+    for (const r of await api.list('posts', of)) await api.remove('posts', r.id)
+    for (const r of await api.list('notes', of)) await api.update('notes', r.id, { committee_id: null })
+    for (const r of await api.list('purchases', of)) await api.update('purchases', r.id, { committee_id: null })
+    for (const r of await api.list('volunteers', of)) await api.remove('volunteers', r.id)
+  }
+  await api.remove('committees', id)
+}
+
 function CommitteeRow({ c }: { c: Committee }) {
   const [v, setV] = useState(c)
   const sv = useSaver()
   async function remove() {
     const ok = await confirmDialog({
       title: `Ta bort ${c.name}?`,
-      message: 'Kommitténs volontärer och scheman försvinner också. Det går inte att ångra.',
+      message: 'Kommitténs volontärer, pass och inlägg tas också bort. Anteckningar och inköp ligger kvar. Det går inte att ångra.',
       confirmLabel: 'Ta bort kommittén',
       danger: true,
     })
-    if (ok) sv.run(() => api.remove('committees', c.id))
+    if (ok) sv.run(() => removeCommittee(c.id))
   }
   return (
     <li className="flex flex-wrap items-end gap-3 py-5">
@@ -278,7 +310,7 @@ function CommitteeRow({ c }: { c: Committee }) {
           {sv.ok ? 'Sparat ✓' : 'Spara'}
         </Button>
         {c.slug !== 'styrgruppen' && (
-          <Button variant="danger" onClick={remove} aria-label={`Ta bort ${c.name}`} title="Ta bort">
+          <Button variant="danger" disabled={sv.busy} onClick={remove} aria-label={`Ta bort ${c.name}`} title="Ta bort">
             <Trash2 className="size-4" />
           </Button>
         )}
@@ -303,7 +335,11 @@ const QR_BASE_KEY = 'vk-qr-base'
 // Utanför artifacten är sidans egen adress rätt; i artifacten finns ingen publik adress att gissa.
 const DEFAULT_QR_BASE = isArtifact ? '' : window.location.origin + import.meta.env.BASE_URL
 
-/** "vinterkonferensen.se" → "https://vinterkonferensen.se/". null om adressen inte går att använda. */
+/**
+ * "vinterkonferensen.se" → "https://vinterkonferensen.se/". null om adressen inte går att använda.
+ * I artifacten blir det artifactens adress utan avslutande snedstreck och utan #namn
+ * ("https://claude.ai/artifact/abc123"), eftersom sidorna där nås med #program, #barn …
+ */
 function normalizeBase(raw: string): string | null {
   const t = raw.trim()
   if (!t) return null
@@ -311,10 +347,17 @@ function normalizeBase(raw: string): string | null {
     const u = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(t) ? t : `https://${t}`)
     if (u.protocol !== 'https:' && u.protocol !== 'http:') return null
     if (!u.hostname.includes('.') && u.hostname !== 'localhost') return null
+    if (isArtifact) return u.origin + u.pathname.replace(/\/+$/, '')
     return u.origin + (u.pathname.endsWith('/') ? u.pathname : u.pathname + '/')
   } catch {
     return null
   }
+}
+
+/** Adressen som QR-koden leder till: …/program på webben, …#program i artifacten. */
+function pageUrl(base: string, path: string): string {
+  if (!isArtifact) return base + path
+  return path ? `${base}#${pathToHash(path)}` : base
 }
 
 function dataUrlToBlob(dataUrl: string): Blob {
@@ -338,7 +381,7 @@ function QrCodes() {
   useEffect(() => {
     if (!base) return setCodes({})
     let alive = true
-    Promise.all(QR_PAGES.map(async (p) => [p.path, await QRCode.toDataURL(base + p.path, { width: 600, margin: 1, color: { dark: '#0e2240' } })] as const))
+    Promise.all(QR_PAGES.map(async (p) => [p.path, await QRCode.toDataURL(pageUrl(base, p.path), { width: 600, margin: 1, color: { dark: '#0e2240' } })] as const))
       .then((e) => alive && setCodes(Object.fromEntries(e)))
       .catch(() => alive && setCodes({}))
     return () => {
@@ -362,7 +405,11 @@ function QrCodes() {
       <div className="no-print max-w-xl">
         <Field
           label="Sidans adress"
-          hint="Adressen där besökarsidan ligger på nätet. QR-koderna leder dit."
+          hint={
+            isArtifact
+              ? 'Artifactens adress på claude.ai, som du delar med besökarna. QR-koderna leder dit.'
+              : 'Adressen där besökarsidan ligger på nätet. QR-koderna leder dit.'
+          }
         >
           <Input
             type="url"
@@ -371,7 +418,7 @@ function QrCodes() {
             spellCheck={false}
             value={raw}
             onChange={(e) => setRaw(e.target.value)}
-            placeholder="https://vinterkonferensen.se/"
+            placeholder={isArtifact ? 'https://claude.ai/artifact/…' : 'https://vinterkonferensen.se/'}
             aria-invalid={!!raw.trim() && !base}
           />
         </Field>
@@ -396,7 +443,7 @@ function QrCodes() {
               <Card key={p.path} className="print-break p-5 text-center">
                 {codes[p.path] ? <img src={codes[p.path]} alt={`QR-kod till ${p.label}`} className="mx-auto w-48" /> : <div className="mx-auto size-48" />}
                 <div className="mt-3 text-lg font-semibold text-ink">{p.label}</div>
-                <div className="select-all break-all text-sm text-muted">{base + p.path}</div>
+                <div className="select-all break-all text-sm text-muted">{pageUrl(base, p.path)}</div>
                 <Button variant="secondary" className="no-print mt-3" disabled={!codes[p.path]} onClick={() => download(p.path)}>
                   <Download className="size-4" /> Ladda ner bild
                 </Button>

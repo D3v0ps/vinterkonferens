@@ -1,7 +1,7 @@
 // Översättningar för den externa sidan (svenska, engelska, arabiska).
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { safeStorage } from './platform'
-import type { Lang } from './types'
+import { LANGS, type Lang, type Localized } from './types'
 
 const sv = {
   langName: 'Svenska',
@@ -120,6 +120,14 @@ const sv = {
   errChildName: 'Skriv barnets namn',
   errAge: 'Skriv en ålder mellan 0 och 17',
   errDays: 'Välj minst en dag',
+  readOnly: 'Du kan bara läsa den här sidan, så det går inte att skicka något härifrån.',
+  listSep: ', ',
+  notVolunteerTitle: 'Inte registrerad som volontär',
+  notVolunteerAs: (email: ReactNode): ReactNode => <>Du är inloggad som {email}, men den adressen finns inte i någon kommitté.</>,
+  notVolunteerNoEmail: 'Vi kunde inte läsa din e-postadress.',
+  notVolunteerAsk: 'Be din kommittéansvarig att lägga till din e-post under Kommittéer → Volontärer.',
+  toVisitorSite: 'Till besökarsidan',
+  signOut: 'Logga ut',
 }
 
 type Dict = typeof sv
@@ -242,6 +250,14 @@ const en: Dict = {
   errChildName: "Enter the child's name",
   errAge: 'Enter an age between 0 and 17',
   errDays: 'Choose at least one day',
+  readOnly: 'You can only view this page, so nothing can be sent from here.',
+  listSep: ', ',
+  notVolunteerTitle: 'Not registered as a volunteer',
+  notVolunteerAs: (email) => <>You are signed in as {email}, but that address is not in any committee.</>,
+  notVolunteerNoEmail: 'We could not read your e-mail address.',
+  notVolunteerAsk: 'Ask your committee lead to add your e-mail address to the volunteer list (Kommittéer → Volontärer).',
+  toVisitorSite: 'Back to the visitor pages',
+  signOut: 'Log out',
 }
 
 const ar: Dict = {
@@ -362,6 +378,14 @@ const ar: Dict = {
   errChildName: 'اكتب اسم الطفل',
   errAge: 'اكتب عمراً بين 0 و17',
   errDays: 'اختر يوماً واحداً على الأقل',
+  readOnly: 'يمكنك عرض هذه الصفحة فقط، لذلك لا يمكن الإرسال من هنا.',
+  listSep: '، ',
+  notVolunteerTitle: 'غير مسجّل كمتطوع',
+  notVolunteerAs: (email) => <>أنت مسجّل الدخول باسم {email}، لكن هذا العنوان غير موجود في أي لجنة.</>,
+  notVolunteerNoEmail: 'لم نتمكن من قراءة عنوان بريدك الإلكتروني.',
+  notVolunteerAsk: 'اطلب من مسؤول لجنتك إضافة بريدك الإلكتروني إلى قائمة المتطوعين (Kommittéer → Volontärer).',
+  toVisitorSite: 'العودة إلى صفحات الزوار',
+  signOut: 'تسجيل الخروج',
 }
 
 const dicts: Record<Lang, Dict> = { sv, en, ar }
@@ -421,3 +445,34 @@ export const LANG_LABEL: Record<Lang, string> = { sv: 'Svenska', en: 'English', 
 
 /** Korta namn för språkväljaren på smala skärmar. */
 export const LANG_SHORT: Record<Lang, string> = { sv: 'Sv', en: 'En', ar: 'عربي' }
+
+/**
+ * Text ur ett flerspråkigt fält, med samma reservordning som tr(). Finns texten inte på sidans språk
+ * får den språkets lang och riktning (isolerad), så att t.ex. punkten i en svensk mening hamnar
+ * sist även på den arabiska sidan, och skärmläsare läser den med rätt uttal.
+ */
+export function Tr({ value }: { value: Localized | null | undefined }) {
+  const { lang } = useI18n()
+  if (!value) return null
+  const own = value[lang]?.trim()
+  if (own) return <>{own}</>
+  const used = LANGS.find((l) => value[l]?.trim())
+  if (!used) return null
+  return (
+    <span lang={used} dir={used === 'ar' ? 'rtl' : 'ltr'}>
+      {value[used]!.trim()}
+    </span>
+  )
+}
+
+/**
+ * Felet på besökarens språk. Skrivskydd (besökaren får bara läsa artifactens databas) får en egen
+ * förklaring, eftersom det inte hjälper att försöka igen.
+ */
+export function errorText(e: unknown, t: Dict): string {
+  const code = (e as { code?: unknown } | null)?.code
+  const message = e instanceof Error ? e.message : ''
+  // artifactAdapter översätter databasens invalid_argument till "Du kan bara läsa här …"
+  if (code === 'invalid_argument' || /^Du kan bara läsa här/.test(message)) return t.readOnly
+  return t.error
+}

@@ -4,10 +4,10 @@ insert into public.settings (id, conference_name) values (1, 'Vinterkonferensen'
 insert into public.committees (slug, name, color, sort) values
   ('styrgruppen',    'Styrgruppen',    '#0f2a47', 0),
   ('konferencierer', 'Konferencierer', '#7c3aed', 1),
-  ('koket',          'Köket',          '#c2410c', 2),
+  ('koket',          'Köket',          '#0f766e', 2),
   ('fritids',        'Fritids',        '#15803d', 3),
   ('forelasningar',  'Föreläsningar',  '#1d4ed8', 4),
-  ('ordning',        'Ordning',        '#b91c1c', 5),
+  ('ordning',        'Ordning',        '#475569', 5),
   ('all-around',     'All around',     '#0e7490', 6),
   ('gastbemotare',   'Gästbemötare',   '#a16207', 7)
 on conflict (slug) do nothing;

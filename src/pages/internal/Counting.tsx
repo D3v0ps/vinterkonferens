@@ -70,7 +70,8 @@ function HallCounting() {
     [sessions.data, counts.data, t],
   )
 
-  if (sessions.loading) return <Spinner />
+  // Vänta också på räkningarna, annars visas sparade räknetillfällen en stund som tomma rutor
+  if (sessions.loading || counts.loading) return <Spinner />
   const list = lectures(selected)
 
   const nowState = next ? cpState(next.at, t, false) : null
@@ -211,7 +212,6 @@ function CheckpointBox({ s, cp, at, t, row }: { s: Session; cp: Checkpoint; at: 
         <form onSubmit={submit} className="mt-3 flex gap-2">
           <Input
             inputMode="numeric"
-            pattern="[0-9]*"
             placeholder="Antal"
             aria-label={`Antal personer – ${CHECKPOINT_LABEL[cp]}`}
             aria-invalid={!!err}
@@ -272,7 +272,6 @@ function Extra({ s, extras }: { s: Session; extras: FlowCount[] }) {
         >
           <Input
             inputMode="numeric"
-            pattern="[0-9]*"
             placeholder="Antal just nu"
             aria-label={`Extra räkning – ${tr(s.title, 'sv')}`}
             aria-invalid={!!err}
@@ -330,6 +329,8 @@ function KitchenCounting() {
   const cutoff = t.getTime() - 15 * 60_000
   const sum = (cat: KitchenCategory, from = 0) =>
     all.filter((e) => e.category === cat && new Date(e.occurred_at).getTime() >= from).reduce((a, e) => a + e.quantity, 0)
+  // Dagens tryck är inte hämtade än (eller gick inte att hämta): visa streck, inte 0, så ingen tror att räkningen nollställts
+  const unknown = events.loading || (!!events.error && !events.data.length)
 
   function tap(cat: KitchenCategory) {
     const ev = { id: uuid(), category: cat, quantity: 1, occurred_at: now().toISOString(), ...author() } as KitchenEvent
@@ -392,7 +393,7 @@ function KitchenCounting() {
             key={c.key}
             type="button"
             onClick={() => tap(c.key)}
-            aria-label={`${c.label}: ${sum(c.key)} idag. Tryck för att lägga till en.`}
+            aria-label={`${c.label}: ${unknown ? 'hämtar dagens antal' : `${sum(c.key)} idag`}. Tryck för att lägga till en.`}
             className={cx(
               'relative flex min-h-32 flex-col items-center justify-center gap-1 rounded-2xl border bg-white p-3 transition select-none active:scale-[0.97] active:bg-ice',
               flash?.cat === c.key ? 'border-accent ring-2 ring-accent/40' : 'border-line hover:border-slate-400',
@@ -400,8 +401,8 @@ function KitchenCounting() {
           >
             <c.icon className="size-7 text-ink" aria-hidden />
             <span className="text-base font-semibold text-ink">{c.label}</span>
-            <span className="text-3xl font-semibold tabular-nums text-ink">{sum(c.key)}</span>
-            <span className="text-sm text-muted tabular-nums">15 min: {sum(c.key, cutoff)}</span>
+            <span className={cx('text-3xl font-semibold tabular-nums', unknown ? 'text-muted' : 'text-ink')}>{unknown ? '–' : sum(c.key)}</span>
+            <span className="text-sm text-muted tabular-nums">15 min: {unknown ? '–' : sum(c.key, cutoff)}</span>
             {flash?.cat === c.key && (
               <span className="absolute end-2 top-2 rounded-full bg-accent px-2.5 py-0.5 text-sm font-semibold text-white" aria-hidden>
                 +1
@@ -417,6 +418,7 @@ function KitchenCounting() {
         {mine.length > 0 && <span className="text-sm text-muted">{mine.length} tryck från den här enheten</span>}
       </div>
       <ErrorText>{err}</ErrorText>
+      {events.error && !events.data.length && <ErrorText>Kunde inte hämta dagens antal. Försöker igen om en stund.</ErrorText>}
 
       <section className="border-t border-line pt-6">
         <h2 className="text-xl font-semibold text-ink">Kö just nu</h2>
@@ -424,7 +426,6 @@ function KitchenCounting() {
         <form onSubmit={saveQueue} className="mt-3 flex max-w-md gap-2">
           <Input
             inputMode="numeric"
-            pattern="[0-9]*"
             placeholder="Antal i kö"
             aria-label="Antal i kö"
             value={q}

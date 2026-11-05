@@ -108,12 +108,14 @@ export function PostEditor({
   return (
     <Modal open={open} onClose={onClose} title={d.id ? 'Redigera inlägg' : 'Nytt inlägg'} wide>
       <div className="space-y-4">
+        {/* På smala skärmar får flikarna halva bredden var och bryts efter "Internt"/"Externt" */}
         <Tabs
+          className="max-sm:grid max-sm:grid-cols-2"
           value={d.audience}
           onChange={(v) => set('audience', v)}
           options={[
-            { value: 'internal', label: 'Internt – för volontärer' },
-            { value: 'external', label: 'Externt – för besökare' },
+            { value: 'internal', label: <AudienceLabel kind="Internt" who="för volontärer" /> },
+            { value: 'external', label: <AudienceLabel kind="Externt" who="för besökare" /> },
           ]}
         />
         <div className="grid gap-4 sm:grid-cols-2">
@@ -160,6 +162,14 @@ export function PostEditor({
   )
 }
 
+function AudienceLabel({ kind, who }: { kind: string; who: string }) {
+  return (
+    <span className="whitespace-normal">
+      {kind} <span className="whitespace-nowrap">– {who}</span>
+    </span>
+  )
+}
+
 /** Ett inlägg som rad. Lägg raderna i en <div className="divide-y divide-line border-y border-line">. */
 export function PostCard({ post, onEdit }: { post: Post; onEdit?: (p: Post) => void }) {
   const auth = useAuth()
@@ -171,7 +181,8 @@ export function PostCard({ post, onEdit }: { post: Post; onEdit?: (p: Post) => v
     post.pinned && 'Fäst',
     post.audience === 'external' && `Besökarsidan · ${PAGE_LABEL[post.page]}`,
     committee?.name,
-    post.author_name,
+    // Externa inlägg har kommitténs namn som avsändare; visa det bara en gång
+    post.author_name !== committee?.name && post.author_name,
     formatDateTime(post.updated_at ?? post.created_at),
   ].filter(Boolean)
 

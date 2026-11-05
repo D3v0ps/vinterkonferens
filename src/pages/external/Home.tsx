@@ -4,7 +4,7 @@ import { DisplayLast, NowNext, PostsList, useDaySessions } from '../../component
 import { useConference } from '../../lib/conference'
 import { tr } from '../../lib/format'
 import { useNow } from '../../lib/hooks'
-import { useI18n } from '../../lib/i18n'
+import { Tr, useI18n } from '../../lib/i18n'
 import { formatDay, localTime, sessionStatus } from '../../lib/time'
 
 export default function Home() {
@@ -27,14 +27,14 @@ export default function Home() {
       title: t.kids,
       sub: kidsNow ? (
         <>
-          <span dir="ltr">{localTime(kidsNow.starts_at)}</span> · {tr(kidsNow.title, lang)}
+          <span dir="ltr">{localTime(kidsNow.starts_at)}</span> · <Tr value={kidsNow.title} />
         </>
       ) : (
         t.kidsLead
       ),
       icon: Baby,
     },
-    { to: '/koket', title: t.kitchen, sub: tr(settings.kitchen_info, lang) || t.kitchenLead, icon: Coffee },
+    { to: '/koket', title: t.kitchen, sub: tr(settings.kitchen_info, lang) ? <Tr value={settings.kitchen_info} /> : t.kitchenLead, icon: Coffee },
   ]
 
   return (
@@ -44,7 +44,11 @@ export default function Home() {
         <h1 className="mt-2 text-[clamp(2.25rem,10.5vw,4.5rem)] leading-[1.02] font-semibold tracking-tight break-words hyphens-auto text-ink">
           <DisplayLast text={settings.conference_name} />
         </h1>
-        {tagline && <p className="mt-4 max-w-[36ch] text-xl leading-snug text-ink-soft">{tagline}</p>}
+        {tagline && (
+          <p className="mt-4 max-w-[36ch] text-xl leading-snug text-ink-soft">
+            <Tr value={settings.tagline} />
+          </p>
+        )}
         {settings.venue && (
           <p className="mt-4 flex items-center gap-1.5 text-base text-muted">
             <MapPin className="size-4 shrink-0" aria-hidden /> {settings.venue}
@@ -62,7 +66,7 @@ export default function Home() {
               <x.icon className="size-6 shrink-0 text-ink-soft" strokeWidth={1.75} aria-hidden />
               <span className="min-w-0 flex-1">
                 <span className="block text-lg leading-snug font-semibold text-ink group-hover:underline group-hover:underline-offset-4">{x.title}</span>
-                <span className="mt-0.5 block truncate text-base text-muted">{x.sub}</span>
+                <span className="mt-0.5 block text-base break-words text-muted">{x.sub}</span>
               </span>
               <ChevronRight className="size-5 shrink-0 text-muted transition-transform group-hover:translate-x-0.5 rtl:rotate-180 rtl:group-hover:-translate-x-0.5" aria-hidden />
             </Link>

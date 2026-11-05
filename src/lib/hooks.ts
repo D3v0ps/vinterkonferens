@@ -90,6 +90,8 @@ export function useLocalStorage<T>(key: string, initial: T): [T, (v: T) => void]
 }
 
 /** Ett anonymt id per enhet – används för att ett betyg bara ska lämnas en gång. */
+let memoryDeviceId: string | null = null
+
 export function deviceId(): string {
   const k = 'vk-device'
   try {
@@ -100,6 +102,8 @@ export function deviceId(): string {
     }
     return id
   } catch {
-    return 'anon-' + Math.random().toString(36).slice(2)
+    // Lagringen är blockerad: samma id under hela besöket
+    memoryDeviceId ??= 'anon-' + Math.random().toString(36).slice(2)
+    return memoryDeviceId
   }
 }

@@ -4,7 +4,7 @@ import { Check, Clock, MapPin, Music, Pin, Star } from 'lucide-react'
 import { useConference } from '../lib/conference'
 import { tr } from '../lib/format'
 import { useList, useNow } from '../lib/hooks'
-import { useI18n } from '../lib/i18n'
+import { Tr, useI18n } from '../lib/i18n'
 import { localDate, localTime, minutesBetween, relMinutes, sessionProgress, sessionStatus, weekdayShort } from '../lib/time'
 import type { Audience, ConferenceDay, Post, PostPage, Session } from '../lib/types'
 import FeedbackDialog, { useRated } from './FeedbackDialog'
@@ -73,7 +73,11 @@ export function DayTabs({ days, value, onChange }: { days: ConferenceDay[]; valu
             )}
           >
             <span className="text-base font-semibold first-letter:uppercase">{d.date === today ? t.today : weekdayShort(d.date, lang)}</span>
-            {tr(d.label, lang) && <span className="mt-0.5 max-w-full truncate text-sm text-muted">{tr(d.label, lang)}</span>}
+            {tr(d.label, lang) && (
+              <span className="mt-0.5 max-w-full truncate text-sm text-muted">
+                <Tr value={d.label} />
+              </span>
+            )}
           </button>
         )
       })}
@@ -159,9 +163,13 @@ export function Agenda({ sessions, showFeedback = true }: { sessions: Session[];
                   )}
                 >
                   {done && <span className="sr-only">{t.done}: </span>}
-                  {tr(s.title, lang)}
+                  <Tr value={s.title} />
                 </h3>
-                {description && !done && <p className="mt-1 text-base text-muted">{description}</p>}
+                {description && !done && (
+                  <p className="mt-1 text-base text-muted">
+                    <Tr value={s.description} />
+                  </p>
+                )}
                 {hasMeta && (
                   <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-base text-muted">
                     {s.kind === 'preshow' && (
@@ -226,7 +234,9 @@ export function NowNext({ sessions }: { sessions: Session[] }) {
           <Star className="size-6 shrink-0 fill-amber-400 text-amber-500" aria-hidden />
           <div className="min-w-0 flex-1">
             <p className="text-base text-muted">{t.justEnded}</p>
-            <p className="truncate text-base font-semibold text-ink">{tr(justEnded.title, lang)}</p>
+            <p className="text-base font-semibold break-words text-ink">
+              <Tr value={justEnded.title} />
+            </p>
           </div>
           <Button className="shrink-0" onClick={() => setRating(justEnded)}>
             {t.rate}
@@ -240,7 +250,9 @@ export function NowNext({ sessions }: { sessions: Session[] }) {
             <p className="flex items-center gap-2 text-base font-medium text-accent-strong">
               <LiveDot /> {t.now}
             </p>
-            <p className="mt-1 text-xl leading-snug font-semibold text-ink">{tr(ongoing.title, lang)}</p>
+            <p className="mt-1 text-xl leading-snug font-semibold text-ink">
+              <Tr value={ongoing.title} />
+            </p>
             <p className="mt-0.5 text-base text-muted">
               {ongoing.speaker && `${ongoing.speaker} · `}
               {t.ongoingUntil} <span dir="ltr">{localTime(ongoing.ends_at)}</span>
@@ -254,7 +266,9 @@ export function NowNext({ sessions }: { sessions: Session[] }) {
             <p className="flex items-center gap-2 text-base font-medium text-ink">
               <Clock className="size-4 shrink-0" aria-hidden /> {t.nextLecture} · {relMinutes(minutesBetween(at, next.starts_at), lang)}
             </p>
-            <p className="mt-1 text-xl leading-snug font-semibold text-ink">{tr(next.title, lang)}</p>
+            <p className="mt-1 text-xl leading-snug font-semibold text-ink">
+              <Tr value={next.title} />
+            </p>
             <p className="mt-0.5 text-base text-muted">
               <span dir="ltr">{localTime(next.starts_at)}</span>
               {next.speaker && ` · ${next.speaker}`}
@@ -262,7 +276,10 @@ export function NowNext({ sessions }: { sessions: Session[] }) {
             </p>
             {preshow && sessionStatus(preshow, at) !== 'done' && (
               <p className="mt-2 flex items-center gap-1.5 text-base text-muted">
-                <Music className="size-4 shrink-0" aria-hidden /> <span dir="ltr">{localTime(preshow.starts_at)}</span> · {tr(preshow.title, lang)}
+                <Music className="size-4 shrink-0" aria-hidden /> <span dir="ltr">{localTime(preshow.starts_at)}</span>
+                <span>
+                  · <Tr value={preshow.title} />
+                </span>
               </p>
             )}
           </div>
@@ -292,10 +309,16 @@ export function PostsList({ page }: { page: PostPage }) {
                   <span className="sr-only">{t.pinned}: </span>
                 </>
               )}
-              <span className="min-w-0">{tr(p.title, lang)}</span>
+              <span className="min-w-0">
+                <Tr value={p.title} />
+              </span>
             </h2>
           )}
-          {tr(p.body, lang) && <p className={cx('whitespace-pre-line text-base', tr(p.title, lang) && 'mt-1')}>{tr(p.body, lang)}</p>}
+          {tr(p.body, lang) && (
+            <p className={cx('whitespace-pre-line text-base', tr(p.title, lang) && 'mt-1')}>
+              <Tr value={p.body} />
+            </p>
+          )}
         </article>
       ))}
     </div>

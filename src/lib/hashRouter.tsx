@@ -1,6 +1,6 @@
 // Navigering i artifacten. Där följer bara en enkel #namn med i länkar och adressfältet
 // (aldrig #/sökväg), så varje sida får ett namn: #program, #barn, #intern-rakning …
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom'
 
 export function pathToHash(path: string): string {
@@ -19,6 +19,8 @@ export function hashToPath(hash: string): string {
 function HashSync() {
   const loc = useLocation()
   const navigate = useNavigate()
+  const current = useRef(loc.pathname)
+  current.current = loc.pathname
 
   // Sida → adressfält
   useEffect(() => {
@@ -32,13 +34,14 @@ function HashSync() {
       }
     }
     window.scrollTo(0, 0)
+    document.getElementById('main-scroll')?.scrollTo(0, 0)
   }, [loc.pathname])
 
   // Adressfält → sida (länkar in till en viss sida)
   useEffect(() => {
     const onHash = () => {
       const path = hashToPath(window.location.hash)
-      if (path !== window.location.pathname) navigate(path)
+      if (path !== current.current) navigate(path)
     }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)

@@ -56,7 +56,7 @@ h1, h2, h3 {
 }
 
 :focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--color-accent) 70%, white);
+  outline: 3px solid var(--color-ink-soft);
   outline-offset: 2px;
 }
 
@@ -89,6 +89,7 @@ button, [role="button"], a, input, select, textarea {
     color: #18233a;
   }
   .field::placeholder { color: #8692a6; }
-  .field:focus { border-color: var(--color-ink-soft); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-ink) 15%, transparent); }
+  .field:focus { border-color: var(--color-ink-soft); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-ink) 18%, transparent); }
+  .field:focus-visible { outline: none; }
   .field:disabled { background: var(--color-slate-100); }
 }

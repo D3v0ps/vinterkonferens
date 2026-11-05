@@ -229,12 +229,15 @@ function NoteForm() {
   const busy = !!status
 
   function addFiles(list: FileList | null) {
-    if (!list) return
-    setErr(null)
-    const big = Array.from(list).filter((f) => f.size > MAX_BYTES)
-    if (big.length) setErr(`${big.map((f) => f.name).join(', ')} är för stor. En fil får vara högst 50 MB.`)
-    setFiles((prev) => [...prev, ...Array.from(list).filter((f) => f.size <= MAX_BYTES)])
+    // Kopiera listan först: FileList är levande och töms när fältet nollställs, innan React hunnit köra uppdateringen
+    const picked = Array.from(list ?? [])
     if (fileRef.current) fileRef.current.value = ''
+    if (!picked.length) return
+    setErr(null)
+    const big = picked.filter((f) => f.size > MAX_BYTES)
+    if (big.length) setErr(`${big.map((f) => f.name).join(', ')} är för stor. En fil får vara högst 50 MB.`)
+    const ok = picked.filter((f) => f.size <= MAX_BYTES)
+    if (ok.length) setFiles((prev) => [...prev, ...ok])
   }
 
   function onRecorded(r: Recording) {
@@ -604,7 +607,7 @@ function NoteItem({ note }: { note: Note }) {
         </details>
       )}
 
-      {note.kind === 'audio' && !note.transcript && !transcribes && <p className="mt-1.5 text-sm text-muted">Utskrift av ljudet finns i den riktiga versionen.</p>}
+      {note.kind === 'audio' && !note.transcript && isDemo && <p className="mt-1.5 text-sm text-muted">Utskrift av ljudet finns i den riktiga versionen.</p>}
 
       {note.kind === 'audio' && !note.transcript && transcribes && canEdit && (
         <div className="mt-3 flex flex-wrap items-center gap-2">

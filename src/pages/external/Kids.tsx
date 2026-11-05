@@ -6,7 +6,7 @@ import { api } from '../../lib/api'
 import { useConference } from '../../lib/conference'
 import { tr } from '../../lib/format'
 import { useLocalStorage } from '../../lib/hooks'
-import { useI18n } from '../../lib/i18n'
+import { Tr, errorText, useI18n } from '../../lib/i18n'
 import { formatDay, weekdayShort } from '../../lib/time'
 import type { Child } from '../../lib/types'
 
@@ -38,8 +38,12 @@ export default function Kids() {
         <h2 id="fritids-title" className="text-2xl font-semibold text-ink">
           {t.fritids}
         </h2>
-        <p className="mt-2 max-w-[60ch] text-base">{tr(settings.fritids_info, lang) || t.registerLead}</p>
-        {price && <p className="mt-1 text-base font-medium text-ink">{price}</p>}
+        <p className="mt-2 max-w-[60ch] text-base">{tr(settings.fritids_info, lang) ? <Tr value={settings.fritids_info} /> : t.registerLead}</p>
+        {price && (
+          <p className="mt-1 text-base font-medium text-ink">
+            <Tr value={settings.fritids_price} />
+          </p>
+        )}
 
         {mine.length > 0 && (
           <div className="mt-6">
@@ -51,8 +55,8 @@ export default function Kids() {
                     #{r.number}
                   </span>
                   <span className="min-w-0">
-                    <span className="block font-medium text-ink">{r.children.join(', ')}</span>
-                    <span className="block text-base text-muted first-letter:uppercase">{r.days.map((d) => weekdayShort(d, lang)).join(', ')}</span>
+                    <span className="block font-medium text-ink">{r.children.join(t.listSep)}</span>
+                    <span className="block text-base text-muted first-letter:uppercase">{r.days.map((d) => weekdayShort(d, lang)).join(t.listSep)}</span>
                   </span>
                 </li>
               ))}
@@ -203,8 +207,8 @@ function RegistrationForm({ onDone, onClose }: { onDone: (r: SavedReg) => void; 
       })
       setNumber(n)
       onDone({ number: n, guardian: guardian_name.trim(), children: kids.map((c) => c.name.trim()), days: picked })
-    } catch {
-      setErr(t.error)
+    } catch (e) {
+      setErr(errorText(e, t))
     } finally {
       setBusy(false)
     }
@@ -389,7 +393,12 @@ function RegistrationForm({ onDone, onClose }: { onDone: (r: SavedReg) => void; 
                     label={
                       <span className="inline-block first-letter:uppercase">
                         {formatDay(d.date, lang)}
-                        {tr(d.label, lang) && <span className="text-muted"> · {tr(d.label, lang)}</span>}
+                        {tr(d.label, lang) && (
+                          <span className="text-muted">
+                            {' '}
+                            · <Tr value={d.label} />
+                          </span>
+                        )}
                       </span>
                     }
                     checked={picked.includes(d.date)}

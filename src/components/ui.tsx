@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ComponentProps, type ReactNode } from 'react'
-import { Loader2, X } from 'lucide-react'
+import { Check, Loader2, X } from 'lucide-react'
 import type { Lang, Localized } from '../lib/types'
 
 export function cx(...c: (string | false | null | undefined)[]) {
@@ -116,7 +116,7 @@ export function Spinner({ label }: { label?: string }) {
 
 export function Empty({ children, icon }: { children: ReactNode; icon?: ReactNode }) {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-line px-6 py-10 text-center text-base text-muted">
+    <div className="flex flex-col items-center gap-2 py-6 text-center text-base text-muted">
       {icon}
       {children}
     </div>
@@ -132,7 +132,7 @@ export function PageHeader({ title, subtitle, actions }: { title: ReactNode; sub
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
       <div className="min-w-0">
-        <h1 className="text-3xl font-semibold tracking-tight text-ink text-balance">{title}</h1>
+        <h1 className="text-[2rem] leading-tight font-semibold tracking-tight text-ink text-balance sm:text-4xl">{title}</h1>
         {subtitle && <p className="mt-1.5 max-w-[65ch] text-base text-muted">{subtitle}</p>}
       </div>
       {actions && <div className="no-print flex flex-wrap gap-2">{actions}</div>}
@@ -140,7 +140,28 @@ export function PageHeader({ title, subtitle, actions }: { title: ReactNode; sub
   )
 }
 
-export function Modal({ open, onClose, title, children, wide }: { open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; wide?: boolean }) {
+const CLOSE_LABEL: Record<string, string> = { sv: 'Stäng', en: 'Close', ar: 'إغلاق' }
+
+/**
+ * Dialogruta. Stängs bara med stängknappen (eller Esc när `persistent` inte är satt), aldrig
+ * av ett tryck bredvid – så att ett långt formulär inte töms av misstag. Helskärm på telefon.
+ */
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  wide,
+  persistent,
+}: {
+  open: boolean
+  onClose: () => void
+  title: ReactNode
+  children: ReactNode
+  wide?: boolean
+  /** Esc stänger inte (för formulär med inmatning). */
+  persistent?: boolean
+}) {
   const ref = useRef<HTMLDialogElement>(null)
   useEffect(() => {
     const d = ref.current
@@ -151,18 +172,27 @@ export function Modal({ open, onClose, title, children, wide }: { open: boolean;
   return (
     <dialog
       ref={ref}
-      onClose={onClose}
-      onClick={(e) => e.target === ref.current && onClose()}
+      onCancel={(e) => {
+        e.preventDefault()
+        if (!persistent) onClose()
+      }}
+      onClose={() => open && onClose()}
       className={cx(
         'm-auto w-[calc(100%-1.5rem)] rounded-2xl bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-ink/50',
+        'max-sm:m-0 max-sm:h-dvh max-sm:max-h-none max-sm:w-full max-sm:max-w-none max-sm:rounded-none',
         wide ? 'max-w-3xl' : 'max-w-lg',
       )}
     >
       {open && (
-        <div className="max-h-[85dvh] overflow-y-auto">
-          <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-line bg-white px-5 py-4">
+        <div className="max-h-[85dvh] overflow-y-auto overscroll-contain max-sm:max-h-dvh max-sm:pb-[env(safe-area-inset-bottom,0px)]">
+          <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-line bg-white px-5 py-3 max-sm:pt-[max(0.75rem,env(safe-area-inset-top,0px))]">
             <h2 className="text-xl font-semibold text-ink text-balance">{title}</h2>
-            <button type="button" onClick={onClose} className="grid size-11 place-items-center rounded-xl text-muted hover:bg-slate-100" aria-label="Stäng">
+            <button
+              type="button"
+              onClick={onClose}
+              className="grid size-11 shrink-0 place-items-center rounded-xl text-muted hover:bg-slate-100"
+              aria-label={CLOSE_LABEL[document.documentElement.lang] ?? 'Stäng'}
+            >
               <X className="size-5" />
             </button>
           </div>
@@ -175,7 +205,7 @@ export function Modal({ open, onClose, title, children, wide }: { open: boolean;
 
 export function Tabs<T extends string>({ value, onChange, options, className }: { value: T; onChange: (v: T) => void; options: { value: T; label: ReactNode }[]; className?: string }) {
   return (
-    <div role="tablist" className={cx('no-print flex gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1', className)}>
+    <div role="tablist" className={cx('no-print inline-flex max-w-full gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1', className)}>
       {options.map((o) => (
         <button
           key={o.value}
@@ -183,7 +213,7 @@ export function Tabs<T extends string>({ value, onChange, options, className }: 
           aria-selected={value === o.value}
           onClick={() => onChange(o.value)}
           className={cx(
-            'min-h-10 shrink-0 whitespace-nowrap rounded-lg px-3.5 py-2 text-base font-medium transition-colors',
+            'min-h-11 shrink-0 whitespace-nowrap rounded-lg px-3.5 py-2 text-base font-medium transition-colors',
             value === o.value ? 'bg-white text-ink shadow-sm' : 'text-muted hover:text-ink',
           )}
         >
@@ -229,12 +259,13 @@ export function LocalizedInput({
                 key={l}
                 onClick={() => setActive(l)}
                 className={cx(
-                  'min-h-8 rounded-md px-2.5 py-1 text-sm font-medium',
-                  active === l ? 'bg-ink text-white' : value[l]?.trim() ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-muted',
+                  'inline-flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-lg px-2.5 text-base font-medium',
+                  active === l ? 'bg-ink text-white' : 'bg-slate-100 text-ink',
                 )}
-                title={LANG_NAMES[l]}
+                title={`${LANG_NAMES[l]}${value[l]?.trim() ? ' – ifylld' : ' – tom'}`}
                 aria-pressed={active === l}
               >
+                {value[l]?.trim() && <Check className="size-4" aria-label="ifylld" />}
                 {l === 'ar' ? 'عربي' : l === 'sv' ? 'Sv' : 'En'}
               </button>
             ))}
@@ -247,6 +278,8 @@ export function LocalizedInput({
         lang={active}
         value={value[active] ?? ''}
         placeholder={active === 'sv' ? '' : `${LANG_NAMES[active]} – tomt = visas på svenska`}
+        aria-label={langs.length > 1 ? `${label} (${LANG_NAMES[active]})` : label}
+        aria-required={required || undefined}
         onChange={(e: React.ChangeEvent<HTMLInputElement & HTMLTextAreaElement>) => onChange({ ...value, [active]: e.target.value })}
       />
     </div>

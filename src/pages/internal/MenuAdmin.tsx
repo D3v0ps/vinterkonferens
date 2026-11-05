@@ -34,6 +34,13 @@ function parseAmount(v: string): number | null | undefined {
   return Number.isFinite(n) && n >= 0 ? n : undefined
 }
 
+/** 25 → "25", 25.5 → "25,50" (som i listan). Fler decimaler lämnas orörda så att priset inte ändras vid Spara. */
+function priceText(n: number | null | undefined): string {
+  if (n == null) return ''
+  const s = Number.isInteger(n) || Number(n.toFixed(2)) !== n ? String(n) : n.toFixed(2)
+  return s.replace('.', ',')
+}
+
 // ---------------------------------------------------------------- Exempelmeny
 // Några rätter så att köket kan se hur menyn och Finns/Slut ser ut för besökarna.
 // Allt börjar med "Exempel:" och tas bort med en knapp.
@@ -65,7 +72,7 @@ export default function MenuAdmin() {
     setErr(null)
     setForm(
       it
-        ? { ...it, priceText: it.price != null ? String(it.price).replace('.', ',') : '' }
+        ? { ...it, priceText: priceText(it.price) }
         : { name: {}, description: {}, category, tags: [], available: true, sort: items.length, priceText: '' },
     )
   }

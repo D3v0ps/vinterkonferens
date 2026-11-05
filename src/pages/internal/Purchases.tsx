@@ -5,7 +5,7 @@ import { Button, Empty, ErrorText, Input, Modal, PageHeader, Select, Spinner, Te
 import { api, isDemo } from '../../lib/api'
 import { useAuth, useAuthorFields } from '../../lib/auth'
 import { safeFileName, uuid } from '../../lib/db'
-import { kr } from '../../lib/format'
+import { kr, num } from '../../lib/format'
 import { useList } from '../../lib/hooks'
 import { todayStr } from '../../lib/time'
 import type { Purchase, PurchaseItem } from '../../lib/types'
@@ -47,7 +47,8 @@ export default function Purchases() {
   const auth = useAuth()
   const canEdit = useCanEditPurchase()
   const purchases = useList('purchases', { order: [{ col: 'purchased_on', asc: false }, { col: 'created_at', asc: false }] })
-  const items = useList('purchase_items')
+  // I den ordning produkterna skrevs in (radernas id är slumpade)
+  const items = useList('purchase_items', { order: [{ col: 'created_at' }] })
   const [editing, setEditing] = useState<Purchase | 'new' | null>(null)
   const [open, setOpen] = useState<string | null>(null)
   const [committee, setCommittee] = useState('')
@@ -227,45 +228,78 @@ function PurchaseDetails({ purchase: p, rows, actions }: { purchase: Purchase; r
       </dl>
 
       {rows.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[34rem] text-base">
-            <thead className="border-b border-line text-sm text-muted">
-              <tr>
-                <th className="py-2 pe-3 text-start font-medium">Produkt</th>
-                <th className="py-2 pe-3 text-start font-medium">Märke</th>
-                <th className="py-2 pe-3 text-end font-medium">Antal</th>
-                <th className="py-2 pe-3 text-end font-medium">À-pris</th>
-                <th className="py-2 pe-3 text-end font-medium">Rabatt</th>
-                <th className="py-2 text-end font-medium">Summa</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {rows.map((i) => {
-                const link = webHref(i.link)
-                return (
-                  <tr key={i.id}>
-                    <td className="py-2 pe-3">
+        <>
+          {/* Mobil: lista, som i inventarielistan */}
+          <ul className="divide-y divide-line border-y border-line sm:hidden">
+            {rows.map((i) => {
+              const link = webHref(i.link)
+              return (
+                <li key={i.id} className="flex items-start justify-between gap-3 py-3">
+                  <div className="min-w-0">
+                    <div className="text-base font-medium text-ink break-words">
                       {link ? (
-                        <a href={link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-ink underline decoration-ink/30 underline-offset-4 hover:decoration-ink">
-                          {i.name} <ExternalLink className="size-3.5" aria-label="(öppnas i ny flik)" />
+                        <a href={link} target="_blank" rel="noopener noreferrer" className="underline decoration-ink/30 underline-offset-4">
+                          {i.name}
                         </a>
                       ) : (
                         i.name
                       )}
-                    </td>
-                    <td className="py-2 pe-3 text-muted">{i.brand}</td>
-                    <td className="whitespace-nowrap py-2 pe-3 text-end tabular-nums">
-                      {i.quantity} {i.unit}
-                    </td>
-                    <td className="whitespace-nowrap py-2 pe-3 text-end tabular-nums">{kr(i.unit_price)}</td>
-                    <td className="whitespace-nowrap py-2 pe-3 text-end tabular-nums text-emerald-800">{i.discount ? `−${kr(i.discount)}` : ''}</td>
-                    <td className="whitespace-nowrap py-2 text-end tabular-nums">{kr(lineTotal(i))}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+                    </div>
+                    {i.brand && <div className="text-sm text-muted break-words">{i.brand}</div>}
+                  </div>
+                  <div className="shrink-0 text-end tabular-nums">
+                    <div className="text-base font-semibold text-ink">{kr(lineTotal(i))}</div>
+                    <div className="text-sm text-muted">
+                      {num(i.quantity, 3)} {i.unit} × {kr(i.unit_price)}
+                    </div>
+                    {i.discount > 0 && <div className="text-sm text-emerald-800">−{kr(i.discount)} rabatt</div>}
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+
+          {/* Dator: tabell */}
+          <div className="hidden overflow-x-auto sm:block">
+            <table className="w-full min-w-[34rem] text-base">
+              <thead className="border-b border-line text-sm text-muted">
+                <tr>
+                  <th className="py-2 pe-3 text-start font-medium">Produkt</th>
+                  <th className="py-2 pe-3 text-start font-medium">Märke</th>
+                  <th className="py-2 pe-3 text-end font-medium">Antal</th>
+                  <th className="py-2 pe-3 text-end font-medium">À-pris</th>
+                  <th className="py-2 pe-3 text-end font-medium">Rabatt</th>
+                  <th className="py-2 text-end font-medium">Summa</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {rows.map((i) => {
+                  const link = webHref(i.link)
+                  return (
+                    <tr key={i.id}>
+                      <td className="py-2 pe-3">
+                        {link ? (
+                          <a href={link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-ink underline decoration-ink/30 underline-offset-4 hover:decoration-ink">
+                            {i.name} <ExternalLink className="size-3.5" aria-label="(öppnas i ny flik)" />
+                          </a>
+                        ) : (
+                          i.name
+                        )}
+                      </td>
+                      <td className="py-2 pe-3 text-muted">{i.brand}</td>
+                      <td className="whitespace-nowrap py-2 pe-3 text-end tabular-nums">
+                        {num(i.quantity, 3)} {i.unit}
+                      </td>
+                      <td className="whitespace-nowrap py-2 pe-3 text-end tabular-nums">{kr(i.unit_price)}</td>
+                      <td className="whitespace-nowrap py-2 pe-3 text-end tabular-nums text-emerald-800">{i.discount ? `−${kr(i.discount)}` : ''}</td>
+                      <td className="whitespace-nowrap py-2 text-end tabular-nums">{kr(lineTotal(i))}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       {p.receipt_path && <ReceiptView path={p.receipt_path} name={p.receipt_name} />}
@@ -367,6 +401,10 @@ const UNITS = ['st', 'paket', 'förp.', 'kg', 'liter', 'rulle', 'låda', 'set']
 const MAX_RECEIPT = 20 * 1024 * 1024
 
 const s = (v: string | null | undefined) => v ?? ''
+/** Tal tillbaka till fältet som man skriver dem: 1,5 och 3 (inte 1.5). */
+const numStr = (v: number) => String(v).replace('.', ',')
+/** Belopp med ören som 24,90 – heltal som 49. */
+const amountStr = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(Math.max(2, String(v).split('.')[1]?.length ?? 0)).replace('.', ','))
 const n = (v: string) => (v.trim() ? v.trim() : null)
 
 type Errors = Record<string, string>
@@ -398,7 +436,7 @@ function PurchaseForm({ purchase, items, onDone }: { purchase: Purchase | null; 
     purchased_on: purchase?.purchased_on ?? todayStr(),
     committee_id: purchase?.committee_id ?? auth.memberships[0]?.committee_id ?? '',
     paid_by: s(purchase?.paid_by),
-    discount_total: purchase?.discount_total ? String(purchase.discount_total) : '',
+    discount_total: purchase?.discount_total ? amountStr(purchase.discount_total) : '',
     discount_note: s(purchase?.discount_note),
     notes: s(purchase?.notes),
   })
@@ -408,10 +446,10 @@ function PurchaseForm({ purchase, items, onDone }: { purchase: Purchase | null; 
           id: i.id,
           name: i.name,
           brand: s(i.brand),
-          quantity: String(i.quantity),
+          quantity: numStr(i.quantity),
           unit: s(i.unit),
-          unit_price: String(i.unit_price),
-          discount: i.discount ? String(i.discount) : '',
+          unit_price: amountStr(i.unit_price),
+          discount: i.discount ? amountStr(i.discount) : '',
           link: s(i.link),
           category: s(i.category),
           storage_location: s(i.storage_location),
@@ -540,7 +578,9 @@ function PurchaseForm({ purchase, items, onDone }: { purchase: Purchase | null; 
         removed.current.add(id)
       }
       for (const r of valid.filter((r) => r.id)) await api.update('purchase_items', r.id!, toItem(r))
-      const fresh = valid.filter((r) => !r.id).map((r) => ({ ...toItem(r), status: 'in_stock' as const }))
+      // En egen tid per rad (efter de befintliga) så att produkterna listas i den ordning de skrevs in
+      const t0 = Math.max(Date.now(), ...items.map((i) => (Date.parse(i.created_at ?? '') || 0) + 1))
+      const fresh = valid.filter((r) => !r.id).map((r, k) => ({ ...toItem(r), status: 'in_stock' as const, created_at: new Date(t0 + k).toISOString() }))
       if (fresh.length) await api.insertMany('purchase_items', fresh)
       onDone(true)
     } catch (e) {

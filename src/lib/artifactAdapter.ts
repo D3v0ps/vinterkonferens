@@ -63,7 +63,7 @@ const ERRORS: Record<string, string> = {
 
 function wrap(e: unknown): Error {
   const code = (e as DbError)?.code
-  if (code && ERRORS[code]) return new Error(ERRORS[code])
+  if (code && ERRORS[code]) return Object.assign(new Error(ERRORS[code]), { code })
   if (e instanceof Error) return e
   return new Error((e as DbError)?.message || 'Något gick fel. Försök igen.')
 }
@@ -163,11 +163,15 @@ export function createArtifactAdapter(db: ArtifactDb, assets: ArtifactAssets | n
           state.loaded = true
           clearTimeout(timer)
           resolve()
+          // Kom svaret efter tidsgränsen: ersätt det avvisade löftet så att sidan hämtar igen
+          state.ready = Promise.resolve()
         }
         emitChange(table)
       },
       (e) => {
         clearTimeout(timer)
+        // Prenumerationen är död: nästa anrop får starta en ny
+        tables.delete(table)
         if (!state.loaded) reject(wrap(e))
         else console.warn('Prenumerationen avbröts', table, e)
       },

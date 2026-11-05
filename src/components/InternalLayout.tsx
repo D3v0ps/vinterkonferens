@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
-  BarChart3, Baby, CalendarCheck, CalendarDays, ClipboardList, ExternalLink, Gauge, Home, Megaphone, Menu as MenuIcon,
+  BarChart3, Baby, CalendarCheck, CalendarDays, ExternalLink, Gauge, Home, Megaphone, Menu as MenuIcon,
   NotebookPen, Package, Settings, ShoppingCart, UsersRound, UtensilsCrossed, LogOut, WifiOff, X,
 } from 'lucide-react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
@@ -9,6 +9,7 @@ import { Button, Spinner, cx } from './ui'
 import DemoBar from './DemoBar'
 import Login from './Login'
 import ViewAsControl from './ViewAsControl'
+import { NotVolunteer } from './ExternalLayout'
 
 export function useNavItems() {
   const a = useAuth()
@@ -59,31 +60,13 @@ export default function InternalLayout() {
   if (!auth.membershipsLoaded) return <Spinner />
   if (!auth.isStaff)
     return (
-      <div className="mx-auto mt-16 max-w-md px-4 text-center">
-        <ClipboardList className="mx-auto size-10 text-slate-400" />
-        <h1 className="mt-3 text-2xl font-semibold text-ink">Inte registrerad som volontär</h1>
-        <p className="mt-2 text-base text-muted">
-          {auth.email ? (
-            <>
-              Du är inloggad som <b className="text-ink">{auth.email}</b>, men den adressen finns inte i någon kommitté.
-            </>
-          ) : (
-            <>Vi kunde inte läsa din e-postadress.</>
-          )}{' '}
-          Be din kommittéansvarig att lägga till din e-post under Kommittéer → Volontärer.
-        </p>
-        {auth.viewAs ? (
-          <Button variant="secondary" className="mt-5" onClick={() => auth.setViewAs(null)}>
+      <NotVolunteer email={auth.email} onSignOut={auth.managedSignIn || auth.viewAs ? undefined : auth.signOut}>
+        {auth.viewAs && (
+          <Button variant="secondary" onClick={() => auth.setViewAs(null)}>
             Sluta visa som {auth.viewAs}
           </Button>
-        ) : (
-          !auth.managedSignIn && (
-            <Button variant="secondary" className="mt-5" onClick={auth.signOut}>
-              Logga ut
-            </Button>
-          )
         )}
-      </div>
+      </NotVolunteer>
     )
 
   const nav = (
@@ -126,10 +109,12 @@ export default function InternalLayout() {
   )
 
   return (
-    <div className="min-h-dvh">
-      <DemoBar />
-      <div className="flex">
-        <aside className="no-print sticky top-0 hidden h-dvh w-68 shrink-0 overflow-y-auto bg-ink p-4 lg:block">
+    <div className="min-h-dvh lg:flex lg:h-dvh lg:flex-col">
+      <div className="lg:shrink-0">
+        <DemoBar />
+      </div>
+      <div className="flex lg:min-h-0 lg:flex-1">
+        <aside className="no-print hidden w-68 shrink-0 overflow-y-auto bg-ink p-4 lg:block lg:h-full">
           <div className="mb-5 px-3 text-white">
             <div className="text-lg font-semibold">Vinterkonferensen</div>
             <div className="font-display text-lg italic text-white/70">för volontärer</div>
@@ -138,7 +123,7 @@ export default function InternalLayout() {
           {footer}
         </aside>
 
-        <div className="min-w-0 flex-1">
+        <div id="main-scroll" className="min-w-0 flex-1 lg:overflow-y-auto">
           <header className="no-print sticky top-[env(safe-area-inset-top,0px)] z-20 flex items-center justify-between bg-ink px-4 py-2 text-white lg:hidden">
             <span className="font-semibold">
               Vinterkonferensen <span className="font-display font-normal italic text-white/70">för volontärer</span>
@@ -162,11 +147,11 @@ export default function InternalLayout() {
             </div>
           )}
           {auth.viewAs && (
-            <div className="no-print flex flex-wrap items-center justify-between gap-2 bg-accent-soft px-4 py-2.5 text-base text-accent-strong lg:px-8">
+            <div className="no-print flex flex-wrap items-center justify-between gap-2 bg-ice px-4 py-2 text-base text-ink lg:px-8">
               <span>
                 Du ser sidan som <b>{auth.displayName}</b> ({auth.viewAs}).
               </span>
-              <button className="min-h-9 rounded-lg bg-white px-3 font-medium text-ink" onClick={() => auth.setViewAs(null)}>
+              <button className="min-h-11 rounded-lg bg-white px-3 font-medium text-ink" onClick={() => auth.setViewAs(null)}>
                 Sluta förhandsgranska
               </button>
             </div>

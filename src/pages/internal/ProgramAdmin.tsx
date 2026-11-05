@@ -172,24 +172,39 @@ export default function ProgramAdmin() {
   const examples = useMemo(() => sessions.filter(isExample), [sessions])
   const offerExample = auth.isAdmin && !loading && sessions.length === 0
 
-  function blank(): Form {
-    const last = list[list.length - 1]
+  /** Förval för en ny punkt på `date`: efter dagens sista punkt, i samma sal, på dagens språk. */
+  function blank(date = day || days[0]?.date || localDate(new Date())): Form {
+    const last = sessions.filter((s) => localDate(s.starts_at) === date).at(-1)
     const start = last ? localTime(last.ends_at) : '10:00'
     return {
-      date: day || days[0]?.date || localDate(new Date()),
+      date,
       start,
-      end: localTime(addMinutes(zonedToUtc(day || days[0]?.date || localDate(new Date()), start), 60)),
+      end: localTime(addMinutes(zonedToUtc(date, start), 60)),
       kind: 'lecture',
       audience: 'adults',
       title: {},
       description: {},
       speaker: '',
       room: last?.room ?? 'Stora salen',
-      language: days.find((d) => d.date === day)?.default_lang ?? 'sv',
+      language: days.find((d) => d.date === date)?.default_lang ?? 'sv',
       capacity: last?.capacity != null ? String(last.capacity) : '',
       published: true,
       feedback_enabled: true,
     }
+  }
+
+  /** Byt dag. I en ny punkt följer fält som ingen har ändrat med till den nya dagens förval. */
+  function changeDate(date: string) {
+    setForm((f) => {
+      if (!f || f.id || f.copyOf) return f && { ...f, date }
+      const was = blank(f.date)
+      const next = blank(date)
+      const patch: Partial<Form> = { date }
+      if (f.start === was.start && f.end === was.end) Object.assign(patch, { start: next.start, end: next.end })
+      if (f.room === was.room && f.capacity === was.capacity) Object.assign(patch, { room: next.room, capacity: next.capacity })
+      if (f.language === was.language) patch.language = next.language
+      return { ...f, ...patch }
+    })
   }
 
   async function save() {
@@ -428,7 +443,7 @@ export default function ProgramAdmin() {
             )}
             <div className="grid gap-4 sm:grid-cols-3">
               <Field label="Dag" required>
-                <Select value={form.date} onChange={(e) => set({ date: e.target.value })}>
+                <Select value={form.date} onChange={(e) => changeDate(e.target.value)}>
                   {days.map((d) => (
                     <option key={d.id} value={d.date}>
                       {weekdayShort(d.date)} {d.date}

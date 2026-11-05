@@ -15,10 +15,10 @@ export const DEMO_PERSONAS = [
 export const COMMITTEES: [slug: string, name: string, color: string][] = [
   ['styrgruppen', 'Styrgruppen', '#0f2a47'],
   ['konferencierer', 'Konferencierer', '#7c3aed'],
-  ['koket', 'Köket', '#c2410c'],
+  ['koket', 'Köket', '#0f766e'],
   ['fritids', 'Fritids', '#15803d'],
   ['forelasningar', 'Föreläsningar', '#1d4ed8'],
-  ['ordning', 'Ordning', '#b91c1c'],
+  ['ordning', 'Ordning', '#475569'],
   ['all-around', 'All around', '#0e7490'],
   ['gastbemotare', 'Gästbemötare', '#a16207'],
 ]

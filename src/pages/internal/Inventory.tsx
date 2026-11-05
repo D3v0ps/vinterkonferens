@@ -19,6 +19,9 @@ const STATUS: Record<ItemStatus, { label: string; tone: 'green' | 'slate' | 'amb
 
 type Row = PurchaseItem & { purchase: Purchase | undefined }
 
+/** Kronor med högst två decimaler – annars hamnar flyttalsbrus som 69,69999999999999 i Excel. */
+const round2 = (n: number) => Math.round(n * 100) / 100
+
 export default function Inventory() {
   const auth = useAuth()
   const items = useList('purchase_items', { order: [{ col: 'name' }] })
@@ -57,8 +60,10 @@ export default function Inventory() {
     setErr(null)
     try {
       await api.update('purchase_items', r.id, p)
+      return true
     } catch (e) {
       setErr((e as Error).message)
+      return false
     }
   }
 
@@ -76,7 +81,7 @@ export default function Inventory() {
           r.unit,
           r.unit_price,
           r.discount || 0,
-          lineTotal(r),
+          round2(lineTotal(r)),
           r.category,
           r.storage_location,
           STATUS[r.status]?.label ?? r.status,
@@ -123,9 +128,11 @@ export default function Inventory() {
         defaultValue={r.storage_location ?? ''}
         placeholder="Var finns den?"
         aria-label={`Förvaring för ${r.name}`}
-        onBlur={(e) => {
-          const v = e.target.value.trim() || null
-          if (v !== (r.storage_location ?? null)) patch(r, { storage_location: v })
+        onBlur={async (e) => {
+          const el = e.currentTarget
+          const v = el.value.trim() || null
+          // Gick det inte att spara: visa det som faktiskt är sparat, inte det som skrevs
+          if (v !== (r.storage_location ?? null) && !(await patch(r, { storage_location: v }))) el.value = r.storage_location ?? ''
         }}
         onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
       />
@@ -216,7 +223,7 @@ export default function Inventory() {
                     <div className="shrink-0 text-end">
                       <div className="text-base font-semibold tabular-nums text-ink">{kr(lineTotal(r))}</div>
                       <div className="text-sm text-muted tabular-nums">
-                        {num(r.quantity, 2)} {r.unit} × {kr(r.unit_price)}
+                        {num(r.quantity, 3)} {r.unit} × {kr(r.unit_price)}
                       </div>
                     </div>
                   </div>
@@ -265,7 +272,7 @@ export default function Inventory() {
                         {(r.brand || r.category) && <div className="text-sm text-muted">{[r.brand, r.category].filter(Boolean).join(' · ')}</div>}
                       </td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-end tabular-nums">
-                        {num(r.quantity, 2)} {r.unit}
+                        {num(r.quantity, 3)} {r.unit}
                       </td>
                       <td className="px-3 py-2.5">
                         <div>{r.purchase?.store_name}</div>

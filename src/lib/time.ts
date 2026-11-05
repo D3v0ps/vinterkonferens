@@ -182,3 +182,22 @@ export function shiftTime(hhmm: string, min: number): string {
   const t = (((h * 60 + m + min) % 1440) + 1440) % 1440
   return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`
 }
+
+/** Kort dag, samma form överallt: "fre 6 nov" (sv), "Fri 6 Nov" (en). */
+export function formatShortDay(date: string, lang: Lang = 'sv'): string {
+  const d = zonedToUtc(date, '12:00')
+  return new Intl.DateTimeFormat(LOCALE[lang], { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short' })
+    .format(d)
+    .replace(/\./g, '')
+    .replace(/,/g, '')
+}
+
+/** Kort datum utan veckodag: "5 nov" (år läggs till om det inte är i år). */
+export function formatShortDate(dateOrIso: string, lang: Lang = 'sv'): string {
+  const date = dateOrIso.length > 10 ? localDate(dateOrIso) : dateOrIso
+  const d = zonedToUtc(date, '12:00')
+  const sameYear = date.slice(0, 4) === localDate(now()).slice(0, 4)
+  return new Intl.DateTimeFormat(LOCALE[lang], { timeZone: TZ, day: 'numeric', month: 'short', ...(sameYear ? {} : { year: 'numeric' }) })
+    .format(d)
+    .replace(/\./g, '')
+}
