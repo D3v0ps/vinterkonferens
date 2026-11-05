@@ -17,11 +17,14 @@ export const KIND_KEY: Record<SessionKind, string> = {
   other: 'kind_other',
 }
 
-/** Föreläsningarnas nummer per dag (Föreläsning 1, 2, 3 …), som i det tryckta schemat. */
+/**
+ * Föreläsningarnas nummer per dag (Föreläsning 1, 2, 3 …), som i det tryckta schemat.
+ * En föreläsning med egen etikett (t.ex. "Huvudföreläsning") räknas inte, så att numreringen inte får luckor.
+ */
 export function lectureNumbers(sessions: Session[]): Map<string, number> {
   const byDay = new Map<string, Session[]>()
   for (const s of [...sessions].sort((a, b) => a.starts_at.localeCompare(b.starts_at))) {
-    if (s.kind !== 'lecture') continue
+    if (s.kind !== 'lecture' || Object.values(s.label ?? {}).some((v) => v?.trim())) continue
     const d = localDate(s.starts_at)
     byDay.set(d, [...(byDay.get(d) ?? []), s])
   }

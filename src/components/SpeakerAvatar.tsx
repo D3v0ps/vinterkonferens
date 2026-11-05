@@ -13,6 +13,8 @@ export function cachedFileUrl(bucket: Bucket, path: string): Promise<string | nu
   if (!p) {
     p = api.fileUrl(bucket, path).catch(() => null)
     urls.set(key, p)
+    // Ett misslyckat försök (t.ex. nätet) ska kunna göras om.
+    void p.then((u) => !u && urls.get(key) === p && urls.delete(key))
   }
   return p
 }
@@ -48,14 +50,14 @@ export function initials(name: string): string {
 
 export function SpeakerAvatar({ name, photo, className = 'size-12' }: { name: string; photo?: string | null; className?: string }) {
   const url = useFileUrl('speakers', photo)
-  const [failed, setFailed] = useState(false)
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
   return (
     <span
       className={cx('relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-ice text-ink-soft ring-2 ring-white shadow-sm', className)}
       aria-hidden
     >
-      {url && !failed ? (
-        <img src={url} alt="" className="size-full object-cover" onError={() => setFailed(true)} draggable={false} />
+      {url && url !== failedUrl ? (
+        <img src={url} alt="" className="size-full object-cover" onError={() => setFailedUrl(url)} draggable={false} />
       ) : (
         <span className="font-schedule font-semibold tracking-wide">{initials(name)}</span>
       )}

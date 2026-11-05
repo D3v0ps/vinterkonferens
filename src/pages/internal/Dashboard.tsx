@@ -126,7 +126,7 @@ function CountLink({ at, ordning, koket, mine, koketId }: { at: Date; ordning: b
         .sort((a, b) => a.at.getTime() - b.at.getTime())[0]
     : undefined
   const countNow = !!next && next.since >= -2 && !counts.loading
-  const meal = koket ? sessions.data.find((s) => s.kind === 'meal' && sessionStatus(s, at) === 'ongoing') : undefined
+  const meal = koket ? sessions.data.find((s) => (s.kind === 'meal' || s.kind === 'break') && sessionStatus(s, at) === 'ongoing') : undefined
   const kitchenShift = koket ? mine.find((s) => s.committee_id === koketId && shiftState(s, at) === 'ongoing') : undefined
   const kitchenLive = !!meal || !!kitchenShift
   const live = countNow || kitchenLive

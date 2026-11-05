@@ -180,7 +180,7 @@ export default function FeedbackDialog({ session, onClose, onDone }: { session: 
 
   return (
     // FormModal: Esc ska inte tömma ett halvifyllt betyg
-    <FormModal open={!!session} onClose={reset} title={sent ? t.rated : t.rateTitle}>
+    <FormModal open={!!session} onClose={reset} title={sent ? t.rated : session?.kind === 'panel' ? t.rateTitlePanel : t.rateTitle}>
       {session &&
         (sent ? (
           <div className="py-4 text-center">

@@ -2,7 +2,7 @@
 // Upplägget brukar vara detsamma år från år: bönerna är fasta punkter, föreläsningar på 45–60 minuter
 // med rast emellan och en panel som avslutar dagen. Titlar och talare är förra årets och byts ut.
 import { zonedToUtc } from './time'
-import type { ConferenceDay, Lang, Localized, Session, SessionKind } from './types'
+import type { Audience, ConferenceDay, Lang, Localized, Session, SessionKind } from './types'
 
 interface Item {
   start: string
@@ -12,6 +12,8 @@ interface Item {
   /** Egen text i schemats första kolumn, t.ex. "Jumuah" eller "Start". */
   label?: Localized
   speaker?: string
+  /** Standard: föreläsningar och start för vuxna, böner och mat/fika för alla (syns även på barnsidan). */
+  audience?: Audience
 }
 
 interface TemplateDay {
@@ -32,7 +34,8 @@ const FOOD = L('Mat/fika', 'Food & coffee', 'طعام وقهوة')
 const QA = L('Frågor & svar', 'Questions & answers', 'أسئلة وأجوبة')
 
 const prayer = (start: string, end: string, title: Localized): Item => ({ start, end, kind: 'prayer', title })
-const rest = (start: string, end: string, title = FOOD): Item => ({ start, end, kind: 'break', title })
+// Korta raster mellan föreläsningarna gäller de vuxna; mat/fika gäller alla.
+const rest = (start: string, end: string, title = FOOD): Item => ({ start, end, kind: 'break', title, audience: title === PAUSE ? 'adults' : 'all' })
 const talk = (start: string, end: string, title: Localized, speaker: string): Item => ({ start, end, kind: 'lecture', title, speaker })
 const panel = (start: string, end: string, title: Localized, speaker: string): Item => ({ start, end, kind: 'panel', title, speaker })
 
@@ -46,7 +49,7 @@ export const TEMPLATE_2025: TemplateDay[] = [
     name: 'Fredag 26 december 2025',
     lang: 'ar',
     items: [
-      { start: '12:00', end: '12:30', kind: 'prayer', label: L('Jumuah', 'Jumuah', 'الجمعة'), title: L('Fredagspredikan', 'Friday sermon', 'خطبة الجمعة'), speaker: KHEDR },
+      { start: '12:00', end: '12:30', kind: 'prayer', label: L('Jumuah', 'Jumuah', 'الجمعة'), title: L('Fredagspredikan', 'Friday sermon', 'خطبة الجمعة'), speaker: KHEDR, audience: 'adults' },
       prayer('12:50', '13:15', L('Asr + påminnelse (arabiska)', 'Asr + reminder (Arabic)', 'العصر + تذكرة')),
       prayer('15:00', '15:30', MAGHRIB),
       rest('15:30', '15:45', PAUSE),
@@ -114,7 +117,7 @@ export function templateRows(days: ConferenceDay[], published = false): Partial<
         starts_at: zonedToUtc(d.date, x.start).toISOString(),
         ends_at: zonedToUtc(d.date, x.end).toISOString(),
         kind: x.kind,
-        audience: talk || x.kind === 'other' ? 'adults' : 'all',
+        audience: x.audience ?? (talk || x.kind === 'other' ? 'adults' : 'all'),
         title: x.title,
         label: x.label ?? {},
         description: {},

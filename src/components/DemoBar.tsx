@@ -36,13 +36,13 @@ export default function DemoBar() {
           <Clock className="size-4" aria-hidden /> Visa sidan som:
         </span>
         {days.map((d) => (
-          <button key={d.id} className={btn} onClick={() => setSimulatedTime(`${d.date}T11:20`)}>
-            {weekdayShort(d.date)} 11:20
+          <button key={d.id} className={btn} onClick={() => setSimulatedTime(`${d.date}T16:20`)}>
+            {weekdayShort(d.date)} 16:20
           </button>
         ))}
         {days.slice(1, 2).map((d) => (
-          <button key={d.id + 'pm'} className={btn} onClick={() => setSimulatedTime(`${d.date}T14:35`)}>
-            {weekdayShort(d.date)} 14:35
+          <button key={d.id + 'pm'} className={btn} onClick={() => setSimulatedTime(`${d.date}T19:50`)}>
+            {weekdayShort(d.date)} 19:50
           </button>
         ))}
         <PickTime days={days.map((d) => d.date)} />
@@ -69,7 +69,7 @@ export default function DemoBar() {
 /** Valfri dag och tid, t.ex. för att se läget "Räkna nu" mitt under en föreläsning. */
 function PickTime({ days }: { days: string[] }) {
   const [day, setDay] = useState(days[0] ?? '')
-  const [time, setTime] = useState('10:05')
+  const [time, setTime] = useState('16:05')
   if (!days.length) return null
   return (
     <form

@@ -197,6 +197,9 @@ export default function ProgramAdmin() {
   const list = useMemo(() => sessions.filter((s) => localDate(s.starts_at) === day), [sessions, day])
   const numbers = useMemo(() => lectureNumbers(list), [list])
   const drafts = useMemo(() => list.filter((s) => !s.published), [list])
+  const allDrafts = useMemo(() => sessions.filter((s) => !s.published), [sessions])
+  // Punkter från det gamla exempelprogrammet (före mallen) kan tas bort med en knapp.
+  const examples = useMemo(() => sessions.filter((s) => (s.title?.sv ?? '').trim().startsWith('Exempel:')), [sessions])
   const rooms = useMemo(() => [...new Set(sessions.map((s) => s.room).filter(Boolean))] as string[], [sessions])
 
   // "+5 min" bara där det går att använda: i varje sal den punkt som pågår, annars nästa – idag
@@ -238,7 +241,8 @@ export default function ProgramAdmin() {
       description: {},
       speaker: '',
       ...NO_PHOTO,
-      room: last?.room ?? 'Stora salen',
+      // Dagar från mallen saknar sal; nya punkter följer dagens sista punkt.
+      room: last ? (last.room ?? '') : 'Stora salen',
       language: days.find((d) => d.date === date)?.default_lang ?? 'sv',
       capacity: last?.capacity != null ? String(last.capacity) : '',
       published: true,
@@ -350,11 +354,16 @@ export default function ProgramAdmin() {
 
   async function postpone(s: Session) {
     const affected = sessions.filter(
-      (x) => localDate(x.starts_at) === localDate(s.starts_at) && (x.room ?? '') === (s.room ?? '') && x.starts_at >= s.starts_at,
+      // Bönetiderna är fasta och flyttas bara om det är bönen själv som skjuts upp.
+      (x) =>
+        localDate(x.starts_at) === localDate(s.starts_at) &&
+        (x.room ?? '') === (s.room ?? '') &&
+        x.starts_at >= s.starts_at &&
+        (x.id === s.id || x.kind !== 'prayer'),
     )
     const ok = await confirmDialog({
       title: 'Skjuta upp 5 minuter?',
-      message: `${affected.length === 1 ? 'Den här programpunkten' : `${affected.length} programpunkter`} i ${s.room || 'samma sal'} från kl ${localTime(s.starts_at)} flyttas 5 minuter senare.`,
+      message: `${affected.length === 1 ? 'Den här programpunkten' : `${affected.length} programpunkter`} i ${s.room || 'samma sal'} från kl ${localTime(s.starts_at)} flyttas 5 minuter senare.${s.kind !== 'prayer' && sessions.some((x) => x.kind === 'prayer' && localDate(x.starts_at) === localDate(s.starts_at) && x.starts_at > s.starts_at) ? ' Bönerna ligger kvar på sina tider.' : ''}`,
       confirmLabel: 'Skjut upp',
     })
     if (!ok) return
@@ -395,18 +404,38 @@ export default function ProgramAdmin() {
     }
   }
 
-  async function publishDrafts() {
-    const n = drafts.length
+  async function publishDrafts(everyDay = false) {
+    const items = everyDay ? allDrafts : drafts
+    const n = items.length
     const ok = await confirmDialog({
-      title: `Publicera ${n} programpunkter?`,
-      message: `De syns direkt i programmet för ${formatShortDay(day)} på besökarsidan.`,
+      title: n === 1 ? 'Publicera programpunkten?' : `Publicera ${n} programpunkter?`,
+      message: everyDay ? 'De syns direkt i programmet på besökarsidan, alla dagar.' : `De syns direkt i programmet för ${formatShortDay(day)} på besökarsidan.`,
       confirmLabel: 'Publicera',
     })
     if (!ok) return
     setBulkBusy(true)
     try {
-      for (const s of drafts) await api.update('sessions', s.id, { published: true })
+      for (const s of items) await api.update('sessions', s.id, { published: true })
       notify(n === 1 ? 'Programpunkten är publicerad' : `${n} programpunkter är publicerade`)
+    } catch (e) {
+      notify((e as Error).message, 'error')
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
+  async function removeExamples() {
+    const ok = await confirmDialog({
+      title: `Ta bort ${examples.length} exempelpunkter?`,
+      message: 'Bara programpunkter vars titel börjar med "Exempel:" tas bort. Annat i programmet lämnas kvar.',
+      confirmLabel: 'Ta bort exemplen',
+      danger: true,
+    })
+    if (!ok) return
+    setBulkBusy(true)
+    try {
+      for (const s of examples) await api.remove('sessions', s.id)
+      notify('Exempelprogrammet är borttaget')
     } catch (e) {
       notify((e as Error).message, 'error')
     } finally {
@@ -452,14 +481,34 @@ export default function ProgramAdmin() {
         </div>
       )}
 
-      {canEdit && drafts.length > 0 && (
+      {canEdit && examples.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-md bg-ice px-4 py-3">
+          <p className="text-base text-ink">Det gamla exempelprogrammet ligger kvar ({examples.length} punkter som börjar med "Exempel:").</p>
+          <Button variant="ghost" className="text-rose-700" loading={bulkBusy} onClick={removeExamples}>
+            <Trash2 className="size-4" aria-hidden /> Ta bort exemplen
+          </Button>
+        </div>
+      )}
+
+      {canEdit && allDrafts.length > 0 && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-md bg-ice px-4 py-3">
           <p className="text-base text-ink">
-            {drafts.length === 1 ? '1 programpunkt är utkast' : `${drafts.length} programpunkter är utkast`} och syns inte för besökarna.
+            {drafts.length > 0
+              ? `${drafts.length === 1 ? '1 programpunkt' : `${drafts.length} programpunkter`} den här dagen är utkast och syns inte för besökarna.`
+              : `${allDrafts.length === 1 ? '1 programpunkt' : `${allDrafts.length} programpunkter`} på andra dagar är utkast och syns inte för besökarna.`}
           </p>
-          <Button variant="secondary" loading={bulkBusy} onClick={publishDrafts}>
-            <Send className="size-4" aria-hidden /> {drafts.length === 1 ? 'Publicera' : `Publicera alla ${drafts.length}`}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {drafts.length > 0 && (
+              <Button variant="secondary" loading={bulkBusy} onClick={() => publishDrafts()}>
+                <Send className="size-4" aria-hidden /> {drafts.length === 1 ? 'Publicera' : `Publicera dagens ${drafts.length}`}
+              </Button>
+            )}
+            {allDrafts.length > drafts.length && (
+              <Button variant={drafts.length > 0 ? 'ghost' : 'secondary'} loading={bulkBusy} onClick={() => publishDrafts(true)}>
+                <Send className="size-4" aria-hidden /> Publicera alla dagar ({allDrafts.length})
+              </Button>
+            )}
+          </div>
         </div>
       )}
 

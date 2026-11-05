@@ -1,5 +1,5 @@
 // Delade byggstenar för besökarsidorna: sidrubrik, dagväljare, programlista och anslag.
-import { useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import { Check, Clock, MapPin, Music, Pin, Star } from 'lucide-react'
 import { useConference } from '../lib/conference'
 import { tr } from '../lib/format'
@@ -154,6 +154,26 @@ function Progress({ value }: { value: number }) {
 }
 
 /** Punkter som bär programmet (fetstil i schemat): föreläsningar, paneler, aktiviteter och punkter med egen etikett. */
+// Raden staplas (typ och tid på en rad ovanför titeln) i de smalaste skärmarna, och i telefonen när
+// typens text har ett ord som inte ryms i den smala kolumnen (t.ex. "Huvudföreläsning").
+const STACK = {
+  narrow: {
+    li: 'max-[359px]:grid-cols-[minmax(0,1fr)_auto]',
+    left: 'max-sm:block max-[359px]:col-start-1 max-[359px]:row-start-1 max-[359px]:flex max-[359px]:flex-wrap max-[359px]:items-baseline max-[359px]:gap-x-2',
+    time: 'max-sm:mt-0.5 max-[359px]:mt-0',
+    content: 'max-[359px]:col-start-1 max-[359px]:row-start-2 max-[359px]:mt-1',
+    avatar: 'max-[359px]:col-start-2 max-[359px]:row-span-2 max-[359px]:row-start-1',
+  },
+  phone: {
+    li: 'max-sm:grid-cols-[minmax(0,1fr)_auto]',
+    left: 'max-sm:col-start-1 max-sm:row-start-1 max-sm:flex max-sm:flex-wrap max-sm:items-baseline max-sm:gap-x-2',
+    time: '',
+    content: 'max-sm:col-start-1 max-sm:row-start-2 max-sm:mt-1',
+    avatar: 'max-sm:col-start-2 max-sm:row-span-2 max-sm:row-start-1',
+  },
+}
+const longestWord = (text: string) => Math.max(0, ...text.split(/\s+/).map((w) => w.length))
+
 function isMain(s: Session, lang: Lang) {
   return isTalk(s) || s.kind === 'activity' || s.kind === 'other' || !!tr(s.label ?? undefined, lang)
 }
@@ -169,13 +189,15 @@ export function Agenda({ sessions, showFeedback = true }: { sessions: Session[];
   const { isRated, markRated } = useRated()
   const [rating, setRating] = useState<Session | null>(null)
   const numbers = useMemo(() => lectureNumbers(sessions), [sessions])
+  // Typkolumnen följer dagens längsta etikett (t.ex. "Huvudföreläsning") inom ett tak, så att ord inte bryts mitt i.
+  const catWidth = useMemo(() => Math.max(0, ...sessions.map((s) => categoryLabel(s, lang, t, numbers).length)) * 0.62, [sessions, lang, t, numbers])
 
   const nextId = sessions.find((s) => isTalk(s) && localDate(s.starts_at) === localDate(at) && sessionStatus(s, at) === 'upcoming')?.id
   if (!sessions.length) return <Empty>{t.noProgram}</Empty>
 
   return (
     <>
-      <ol className="divide-y divide-accent border-y border-accent font-schedule">
+      <ol className="divide-y divide-accent border-y border-accent font-schedule" style={{ '--cat': `${catWidth}em` } as CSSProperties}>
         {sessions.map((s) => {
           const st = sessionStatus(s, at)
           const done = st === 'done'
@@ -187,25 +209,30 @@ export function Agenda({ sessions, showFeedback = true }: { sessions: Session[];
           const panel = s.kind === 'panel'
           const avatar = !!s.speaker && !panel
           const tone = done ? 'text-muted' : 'text-ink'
+          const category = categoryLabel(s, lang, t, numbers)
+          const stack = STACK[longestWord(category) > 13 ? 'phone' : 'narrow']
           return (
             <li
               key={s.id}
-              className="grid grid-cols-[7.25rem_minmax(0,1fr)_auto] gap-x-3 py-3.5 sm:grid-cols-[9rem_7.75rem_minmax(0,1fr)_3.5rem] sm:gap-x-5 sm:py-4"
+              className={cx(
+                'grid grid-cols-[7.25rem_minmax(0,1fr)_auto] gap-x-3 py-3.5 text-base sm:grid-cols-[clamp(9rem,var(--cat),15rem)_7.75rem_minmax(0,1fr)_3.5rem] sm:gap-x-5 sm:py-4 sm:text-lg',
+                stack.li,
+              )}
               aria-current={ongoing ? 'true' : undefined}
             >
-              {/* Typ och tid: två kolumner på bred skärm, staplade i telefonen */}
-              <div className="contents max-sm:block">
-                <p className={cx('text-base leading-snug break-words sm:text-lg', main ? 'font-semibold' : 'font-normal', tone)}>
-                  {categoryLabel(s, lang, t, numbers)}
+              {/* Typ och tid: två kolumner på bred skärm, staplade i telefonen och på en rad ovanför titeln i de smalaste */}
+              <div className={cx('contents', stack.left)}>
+                <p lang={lang} className={cx('text-base leading-snug break-words hyphens-auto sm:text-lg', main ? 'font-semibold' : 'font-normal', tone)}>
+                  {tr(s.label ?? undefined, lang) ? <Tr value={s.label} /> : category}
                 </p>
-                <p className={cx('text-base leading-snug tabular-nums max-sm:mt-0.5 sm:text-lg', ongoing ? 'font-semibold text-accent-strong' : main ? `font-semibold ${tone}` : tone, done && 'text-muted')}>
+                <p className={cx('text-base leading-snug tabular-nums sm:text-lg', stack.time, ongoing ? 'font-semibold text-accent-strong' : main ? `font-semibold ${tone}` : tone, done && 'text-muted')}>
                   <span dir="ltr">
                     {localTime(s.starts_at)}–{localTime(s.ends_at)}
                   </span>
                 </p>
               </div>
 
-              <div className="min-w-0">
+              <div className={cx('min-w-0', stack.content)}>
                 {ongoing && (
                   <p className="mb-0.5 flex items-center gap-2 font-sans text-base font-medium text-accent-strong">
                     <LiveDot /> {t.now}
@@ -218,7 +245,7 @@ export function Agenda({ sessions, showFeedback = true }: { sessions: Session[];
                 )}
                 <h3
                   className={cx(
-                    'text-base leading-snug sm:text-lg',
+                    'text-base leading-snug break-words hyphens-auto sm:text-lg',
                     main ? 'font-semibold' : 'font-normal',
                     done ? 'text-muted line-through decoration-1' : 'text-ink',
                   )}
@@ -227,7 +254,7 @@ export function Agenda({ sessions, showFeedback = true }: { sessions: Session[];
                   <Tr value={s.title} />
                 </h3>
                 {s.speaker && (
-                  <p className={cx('mt-0.5 font-sans text-base', panel || done ? 'text-muted' : 'text-ink-soft')}>
+                  <p className={cx('mt-0.5 font-sans text-base break-words', panel || done ? 'text-muted' : 'text-ink-soft')}>
                     <bdi>{s.speaker}</bdi>
                   </p>
                 )}
@@ -263,7 +290,7 @@ export function Agenda({ sessions, showFeedback = true }: { sessions: Session[];
                   ))}
               </div>
 
-              <div className="flex justify-end">
+              <div className={cx('flex justify-end', stack.avatar)}>
                 {avatar && <SpeakerAvatar name={s.speaker!} photo={s.speaker_photo} className={cx('size-10 text-sm sm:size-14 sm:text-base', done && 'opacity-60 grayscale')} />}
               </div>
             </li>
@@ -357,7 +384,7 @@ export function NowNext({ sessions, rateBanner = true }: { sessions: Session[]; 
             <div className="flex items-start gap-4">
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-2 text-base font-medium text-ink">
-                  <Clock className="size-4 shrink-0" aria-hidden /> {t.nextLecture} · {relMinutes(minutesBetween(at, next.starts_at), lang)}
+                  <Clock className="size-4 shrink-0" aria-hidden /> {next.kind === 'panel' ? t.nextPanel : t.nextLecture} · {relMinutes(minutesBetween(at, next.starts_at), lang)}
                 </p>
                 <p className="mt-1 text-xl leading-snug font-semibold text-ink">
                   <Tr value={next.title} />
