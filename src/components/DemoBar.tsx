@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { ChevronDown, Clock, FlaskConical, RotateCcw } from 'lucide-react'
 import { isDemo } from '../lib/api'
 import { useAuth } from '../lib/auth'
@@ -5,7 +6,7 @@ import { useConference } from '../lib/conference'
 import { useNow } from '../lib/hooks'
 import { resetDemoData } from '../lib/localAdapter'
 import { isArtifact } from '../lib/platform'
-import { formatDateTime, isSimulated, setSimulatedTime, weekdayShort } from '../lib/time'
+import { formatShortDay, isSimulated, localDate, localTime, setSimulatedTime, weekdayShort } from '../lib/time'
 import { confirmDialog } from './dialogs'
 
 /**
@@ -21,12 +22,12 @@ export default function DemoBar() {
   const btn = 'inline-flex min-h-11 shrink-0 items-center rounded-lg bg-white/70 px-3 text-base hover:bg-white'
   const label = isDemo ? 'Demoläge – data sparas bara i den här webbläsaren' : 'Förhandsvisning'
   return (
-    <details className="no-print group bg-amber-100 text-amber-950" open={sim || undefined}>
+    <details className="no-print group bg-amber-100 text-amber-950">
       <summary className="mx-auto flex min-h-11 max-w-6xl cursor-pointer list-none items-center gap-2 px-4 text-base [&::-webkit-details-marker]:hidden">
         <FlaskConical className="size-4 shrink-0" aria-hidden />
         <span className="font-medium">{label}</span>
         <span className="truncate text-amber-900">
-          · {sim ? `Simulerad tid ${formatDateTime(at.toISOString())}` : 'Riktig tid'}
+          · {sim ? `Simulerad tid ${formatShortDay(localDate(at))} ${localTime(at)}` : 'Riktig tid'}
         </span>
         <ChevronDown className="ms-auto size-4 shrink-0 transition-transform group-open:rotate-180" aria-hidden />
       </summary>
@@ -44,6 +45,7 @@ export default function DemoBar() {
             {weekdayShort(d.date)} 14:35
           </button>
         ))}
+        <PickTime days={days.map((d) => d.date)} />
         {sim && (
           <button className="inline-flex min-h-11 shrink-0 items-center rounded-lg bg-white px-3 text-base font-medium" onClick={() => setSimulatedTime(null)}>
             Riktig tid
@@ -61,5 +63,39 @@ export default function DemoBar() {
         )}
       </div>
     </details>
+  )
+}
+
+/** Valfri dag och tid, t.ex. för att se läget "Räkna nu" mitt under en föreläsning. */
+function PickTime({ days }: { days: string[] }) {
+  const [day, setDay] = useState(days[0] ?? '')
+  const [time, setTime] = useState('10:05')
+  if (!days.length) return null
+  return (
+    <form
+      className="flex shrink-0 items-center gap-1.5"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (day && /^\d{2}:\d{2}$/.test(time)) setSimulatedTime(`${day}T${time}`)
+      }}
+    >
+      <label className="sr-only" htmlFor="sim-day">
+        Dag
+      </label>
+      <select id="sim-day" className="min-h-11 rounded-lg border border-amber-300 bg-white px-2 text-base" value={day} onChange={(e) => setDay(e.target.value)}>
+        {days.map((d) => (
+          <option key={d} value={d}>
+            {formatShortDay(d)}
+          </option>
+        ))}
+      </select>
+      <label className="sr-only" htmlFor="sim-time">
+        Klockslag
+      </label>
+      <input id="sim-time" type="time" className="min-h-11 rounded-lg border border-amber-300 bg-white px-2 text-base" value={time} onChange={(e) => setTime(e.target.value)} />
+      <button type="submit" className="inline-flex min-h-11 items-center rounded-lg bg-white px-3 text-base font-medium">
+        Visa
+      </button>
+    </form>
   )
 }

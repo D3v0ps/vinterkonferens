@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { CalendarCheck } from 'lucide-react'
 import { useAuth } from '../../lib/auth'
 import { useList, useNow } from '../../lib/hooks'
-import { formatDay } from '../../lib/time'
+import { formatShortDay } from '../../lib/time'
 import { Empty, PageHeader, Spinner } from '../../components/ui'
 import { groupByDate, shiftState } from '../../components/internal-core/shifts'
 import { ShiftItem, useMyShifts } from '../../components/internal-core/MyShifts'
@@ -19,11 +19,7 @@ export default function MySchedule() {
   return (
     <div>
       <PageHeader
-        title={
-          <>
-            Mitt <em className="font-display font-normal italic">schema</em>
-          </>
-        }
+        title="Mitt schema"
         subtitle={`Alla pass för ${auth.displayName} i alla kommittéer.`}
       />
       {mine.length === 0 ? (
@@ -32,7 +28,7 @@ export default function MySchedule() {
         <div className="space-y-10">
           {groupByDate(mine).map(([date, list]) => (
             <section key={date}>
-              <h2 className="text-xl font-semibold text-ink first-letter:uppercase">{formatDay(date)}</h2>
+              <h2 className="text-xl font-semibold text-ink first-letter:uppercase">{formatShortDay(date)}</h2>
               <ul className="mt-2 divide-y divide-line border-y border-line">
                 {list.map((s) => (
                   <ShiftItem

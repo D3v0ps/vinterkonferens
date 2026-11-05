@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { useAuth } from '../../lib/auth'
 import { useList } from '../../lib/hooks'
 import type { Shift } from '../../lib/types'
-import { Badge, cx } from '../ui'
+import { cx } from '../ui'
 import { byStart, shiftState, timeRange } from './shifts'
 
 export function useMyShifts() {
@@ -27,12 +27,12 @@ export function ShiftItem({ shift: s, state, others, dateLabel }: { shift: Shift
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <h3 className="text-base font-semibold text-ink">{s.title}</h3>
-          {state === 'ongoing' && <Badge tone="accent">Pågår nu</Badge>}
-          {state === 'done' && <Badge>Klart</Badge>}
+          {state === 'ongoing' && <span className="inline-flex items-center gap-1.5 text-base font-medium text-accent-strong"><span className="size-2 rounded-full bg-accent" aria-hidden />Pågår nu</span>}
+          {state === 'done' && <span className="text-base text-muted">Klart</span>}
         </div>
         {meta && (
           <p className="mt-0.5 flex items-center gap-2 text-base text-muted">
-            {c && <span className="size-2.5 shrink-0 rounded-full" style={{ background: c.color }} aria-hidden />}
+            {c && <span className="size-2.5 shrink-0 rounded-[3px]" style={{ background: c.color }} aria-hidden />}
             {meta}
           </p>
         )}

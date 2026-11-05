@@ -14,11 +14,7 @@ export default function Committees() {
   return (
     <div>
       <PageHeader
-        title={
-          <>
-            Kommittéer & <em className="font-display font-normal italic">scheman</em>
-          </>
-        }
+        title="Kommittéer & scheman"
         subtitle="Varje kommitté har ett eget schema där alla volontärer finns med."
       />
       {committees.data.length === 0 ? (
@@ -37,7 +33,7 @@ export default function Committees() {
             return (
               <li key={c.id}>
                 <Link to={`/intern/kommitteer/${c.slug}`} className="group flex min-h-14 items-start gap-3 py-4 hover:bg-white/60">
-                  <span className="mt-2 size-3 shrink-0 rounded-full" style={{ background: c.color }} aria-hidden />
+                  <span className="mt-[9px] size-2.5 shrink-0 rounded-[3px]" style={{ background: c.color }} aria-hidden />
                   <span className="min-w-0 flex-1">
                     <span className="block text-lg font-semibold text-ink group-hover:underline">{c.name}</span>
                     {c.description && <span className="mt-0.5 block text-base text-slate-700">{c.description}</span>}

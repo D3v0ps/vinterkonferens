@@ -189,7 +189,7 @@ export function formatShortDay(date: string, lang: Lang = 'sv'): string {
   return new Intl.DateTimeFormat(LOCALE[lang], { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short' })
     .format(d)
     .replace(/\./g, '')
-    .replace(/,/g, '')
+    .replace(/[,،]/g, '')
 }
 
 /** Kort datum utan veckodag: "5 nov" (år läggs till om det inte är i år). */

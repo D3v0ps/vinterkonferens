@@ -130,7 +130,7 @@ function Shell({ children, staffLink = true }: { children?: ReactNode; staffLink
               end={n.end}
               className={({ isActive }) =>
                 cx(
-                  '-mb-px inline-flex min-h-11 items-center border-b-2 text-base font-medium transition-colors',
+                  '-mb-px inline-flex min-h-11 min-w-11 items-center justify-center border-b-2 text-base font-medium transition-colors',
                   isActive ? 'border-ink text-ink' : 'border-transparent text-muted hover:text-ink',
                 )
               }
@@ -146,12 +146,11 @@ function Shell({ children, staffLink = true }: { children?: ReactNode; staffLink
       </main>
 
       {staffLink && (
-        <footer className="no-print mx-auto max-w-3xl px-4 pb-6">
-          <div className="border-t border-line pt-3">
-            <Link to="/intern" className="inline-flex min-h-11 items-center gap-2 text-base text-muted hover:text-ink">
-              <LogIn className="size-4 rtl:-scale-x-100" aria-hidden /> {t.staffLogin}
-            </Link>
-          </div>
+        // Ingen linje: sidans sista lista har redan en, och luften räcker som avgränsning.
+        <footer className="no-print mx-auto max-w-3xl px-4 pt-6 pb-6">
+          <Link to="/intern" className="inline-flex min-h-11 items-center gap-2 text-base text-muted hover:text-ink">
+            <LogIn className="size-4 rtl:-scale-x-100" aria-hidden /> {t.staffLogin}
+          </Link>
         </footer>
       )}
 

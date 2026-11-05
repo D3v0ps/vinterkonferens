@@ -117,7 +117,7 @@ export default function InternalLayout() {
         <aside className="no-print hidden w-68 shrink-0 overflow-y-auto bg-ink p-4 lg:block lg:h-full">
           <div className="mb-5 px-3 text-white">
             <div className="text-lg font-semibold">Vinterkonferensen</div>
-            <div className="font-display text-lg italic text-white/70">för volontärer</div>
+            <div className="text-base text-white/70">för volontärer</div>
           </div>
           {nav}
           {footer}
@@ -126,7 +126,7 @@ export default function InternalLayout() {
         <div id="main-scroll" className="min-w-0 flex-1 lg:overflow-y-auto">
           <header className="no-print sticky top-[env(safe-area-inset-top,0px)] z-20 flex items-center justify-between bg-ink px-4 py-2 text-white lg:hidden">
             <span className="font-semibold">
-              Vinterkonferensen <span className="font-display font-normal italic text-white/70">för volontärer</span>
+              Vinterkonferensen <span className="font-normal text-white/70">för volontärer</span>
             </span>
             <button onClick={() => setOpen(true)} aria-label="Meny" className="grid size-11 place-items-center rounded-xl hover:bg-white/10">
               <MenuIcon className="size-6" />

@@ -1,15 +1,15 @@
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
-import { ChevronDown, Download, ExternalLink, FileText, ImageIcon, Loader2, Paperclip, Search, Trash2, X } from 'lucide-react'
+import { ChevronDown, Download, ExternalLink, FileText, ImageIcon, Loader2, Paperclip, Plus, Search, Trash2, X } from 'lucide-react'
 import { confirmDialog, notify } from '../../components/dialogs'
 import VoiceRecorder, { type Recording } from '../../components/VoiceRecorder'
-import { Button, Empty, ErrorText, Input, PageHeader, Select, Spinner, Textarea, cx } from '../../components/ui'
+import { Button, Empty, ErrorText, Input, Modal, PageHeader, Select, Spinner, Textarea, cx } from '../../components/ui'
 import { api, isDemo } from '../../lib/api'
 import { useAuth, useAuthorFields } from '../../lib/auth'
 import { safeFileName, uuid, type Bucket } from '../../lib/db'
 import { fileSize } from '../../lib/format'
 import { useList } from '../../lib/hooks'
 import { isArtifact, saveFile } from '../../lib/platform'
-import { formatDateTime } from '../../lib/time'
+import { formatShortDate, localTime } from '../../lib/time'
 import type { Note, NoteKind } from '../../lib/types'
 
 const MAX_BYTES = 50 * 1024 * 1024
@@ -51,10 +51,50 @@ export function Question({ label, hint, error, children, className }: { label: s
   return (
     <label className={cx('block', className)}>
       <span className="block text-base font-medium text-ink">{label}</span>
-      {hint && <span className="mt-0.5 block text-sm text-muted">{hint}</span>}
+      {hint && <span className="mt-0.5 block text-base text-muted">{hint}</span>}
       {error && <span className="mt-1 block text-base font-medium text-rose-700">{error}</span>}
       <span className={cx('mt-2 block', error && '[&_.field]:border-rose-600')}>{children}</span>
     </label>
+  )
+}
+
+/** Sök och filter visas först när listan är längre än så här – annars står de bara i vägen. */
+export const FILTER_MIN = 8
+
+/** Sökfältet ovanför en lång lista. */
+export function SearchField({ value, onChange, label, placeholder }: { value: string; onChange: (v: string) => void; label: string; placeholder: string }) {
+  return (
+    <div className="relative">
+      <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden />
+      <Input type="search" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="ps-9" aria-label={label} />
+    </div>
+  )
+}
+
+/** Filtren hopfällda under "Filtrera", så att innehållet kommer först. */
+export function FilterDetails({ active, children }: { active: number; children: ReactNode }) {
+  return (
+    <details className="group">
+      <summary className="flex min-h-11 w-fit cursor-pointer list-none items-center gap-2 text-base font-medium text-ink [&::-webkit-details-marker]:hidden">
+        <ChevronDown className="size-4 transition-transform group-open:rotate-180" aria-hidden /> Filtrera
+        {active > 0 && <span className="font-normal text-muted">· {active === 1 ? '1 filter valt' : `${active} filter valda`}</span>}
+      </summary>
+      <div className="grid gap-4 pt-2 pb-2 sm:grid-cols-3">{children}</div>
+    </details>
+  )
+}
+
+/** "Visar 3 av 12" när sökning eller filter är aktiva, med ett sätt att visa allt igen. */
+export function FilterCount({ shown, total, onReset }: { shown: number; total: number; onReset: () => void }) {
+  return (
+    <p className="flex flex-wrap items-center gap-x-3 text-base text-muted">
+      <span>
+        Visar {shown} av {total}
+      </span>
+      <button type="button" onClick={onReset} className={linkCls}>
+        Visa alla
+      </button>
+    </p>
   )
 }
 
@@ -129,7 +169,7 @@ export function FileLinks({ bucket, path, url, name, size, openLabel = 'Öppna' 
           )}
         </div>
       )}
-      {url && !open && !save && <p className="mt-1 text-sm text-muted">Den här filtypen kan inte öppnas eller sparas här.</p>}
+      {url && !open && !save && <p className="mt-1 text-base text-muted">Den här filtypen kan inte öppnas eller sparas här.</p>}
     </div>
   )
 }
@@ -139,11 +179,17 @@ export function FileLinks({ bucket, path, url, name, size, openLabel = 'Öppna' 
 export default function Notes() {
   const auth = useAuth()
   const notes = useList('notes', { order: [{ col: 'created_at', asc: false }] })
+  const [creating, setCreating] = useState(false)
+  const form = useRef<FormState>({ dirty: false, busy: false })
   const [q, setQ] = useState('')
   const [committee, setCommittee] = useState('')
   const [kind, setKind] = useState('')
 
+  // Sök och filter bara när listan är lång; annars gäller de inte (så att inget göms utan att synas)
+  const filtering = notes.data.length > FILTER_MIN
+  const active = filtering ? [committee, kind].filter(Boolean).length : 0
   const shown = useMemo(() => {
+    if (!filtering) return notes.data
     const s = q.trim().toLowerCase()
     return notes.data.filter(
       (n) =>
@@ -151,48 +197,89 @@ export default function Notes() {
         (!kind || n.kind === kind) &&
         (!s || [n.title, n.body, n.transcript, n.author_name, n.file_name].some((x) => x?.toLowerCase().includes(s))),
     )
-  }, [notes.data, q, committee, kind])
+  }, [notes.data, filtering, q, committee, kind])
+  const narrowed = filtering && (active > 0 || !!q.trim())
+
+  async function closeForm() {
+    // Pågår en uppladdning fortsätter den när rutan stängs; annars fråga innan något osparat slängs
+    if (form.current.dirty && !form.current.busy) {
+      const ok = await confirmDialog({
+        title: 'Släng anteckningen?',
+        message: 'Det du har skrivit, valt eller spelat in sparas inte.',
+        confirmLabel: 'Släng',
+        cancelLabel: 'Fortsätt',
+        danger: true,
+      })
+      if (!ok) return
+    }
+    setCreating(false)
+  }
+
+  const resetFilters = () => {
+    setQ('')
+    setCommittee('')
+    setKind('')
+  }
 
   return (
     <div className="max-w-3xl">
-      <PageHeader title="Anteckningar" subtitle="Skärmdumpar, foton, dokument och röstinspelningar – samlat på ett ställe, direkt från mobilen." />
-      <NoteForm />
+      <PageHeader
+        title="Anteckningar"
+        subtitle="Skärmdumpar, foton, dokument och röstinspelningar – samlat på ett ställe, direkt från mobilen."
+        actions={
+          <Button onClick={() => setCreating(true)}>
+            <Plus className="size-4" aria-hidden /> Ny anteckning
+          </Button>
+        }
+      />
 
-      <section className="mt-12" aria-labelledby="notes-feed">
-        <h2 id="notes-feed" className="text-xl font-semibold text-ink">
-          Alla anteckningar
-        </h2>
-        <div className="mt-4 mb-2 grid gap-3 sm:grid-cols-[1fr_auto_auto]">
-          <div className="relative">
-            <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden />
-            <Input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Sök i titel, text, namn …" className="ps-9" aria-label="Sök bland anteckningarna" />
+      <section aria-label="Alla anteckningar">
+        {filtering && (
+          <div className="mb-4 space-y-1">
+            <SearchField value={q} onChange={setQ} label="Sök bland anteckningarna" placeholder="Sök i titel, text, namn …" />
+            <FilterDetails active={active}>
+              <Question label="Kommitté">
+                <Select value={committee} onChange={(e) => setCommittee(e.target.value)}>
+                  <option value="">Alla kommittéer</option>
+                  {auth.committees.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </Select>
+              </Question>
+              <Question label="Typ">
+                <Select value={kind} onChange={(e) => setKind(e.target.value)}>
+                  <option value="">Alla typer</option>
+                  {(Object.keys(KIND_LABEL) as NoteKind[]).map((k) => (
+                    <option key={k} value={k}>
+                      {KIND_LABEL[k]}
+                    </option>
+                  ))}
+                </Select>
+              </Question>
+            </FilterDetails>
+            {narrowed && shown.length > 0 && <FilterCount shown={shown.length} total={notes.data.length} onReset={resetFilters} />}
           </div>
-          <Select value={committee} onChange={(e) => setCommittee(e.target.value)} aria-label="Kommitté">
-            <option value="">Alla kommittéer</option>
-            {auth.committees.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </Select>
-          <Select value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Typ">
-            <option value="">Alla typer</option>
-            {(Object.keys(KIND_LABEL) as NoteKind[]).map((k) => (
-              <option key={k} value={k}>
-                {KIND_LABEL[k]}
-              </option>
-            ))}
-          </Select>
-        </div>
+        )}
 
         {notes.loading ? (
           <Spinner />
         ) : notes.error ? (
           <ErrorText>{notes.error}</ErrorText>
         ) : shown.length === 0 ? (
-          <div className="mt-4">
-            <Empty icon={<FileText className="size-8 text-muted" aria-hidden />}>{notes.data.length ? 'Inga anteckningar matchar sökningen.' : 'Inga anteckningar ännu. Den första du sparar hamnar här.'}</Empty>
-          </div>
+          <Empty icon={<FileText className="size-8 text-muted" aria-hidden />}>
+            {notes.data.length ? (
+              <>
+                Inga anteckningar matchar sökningen.
+                <button type="button" onClick={resetFilters} className={linkCls}>
+                  Visa alla
+                </button>
+              </>
+            ) : (
+              'Inga anteckningar ännu. Den första du sparar hamnar här.'
+            )}
+          </Empty>
         ) : (
           <div className="divide-y divide-line border-y border-line">
             {shown.map((n) => (
@@ -201,11 +288,18 @@ export default function Notes() {
           </div>
         )}
       </section>
+
+      <Modal open={creating} onClose={closeForm} title="Ny anteckning" persistent>
+        <NoteForm state={form} onSaved={() => setCreating(false)} onCancel={closeForm} />
+      </Modal>
     </div>
   )
 }
 
-function NoteForm() {
+/** Formulärets läge, så att sidan kan fråga innan osparat slängs. */
+type FormState = { dirty: boolean; busy: boolean }
+
+function NoteForm({ state, onSaved, onCancel }: { state: React.MutableRefObject<FormState>; onSaved: () => void; onCancel: () => void }) {
   const auth = useAuth()
   const author = useAuthorFields()
   const fileRef = useRef<HTMLInputElement>(null)
@@ -227,6 +321,18 @@ function NoteForm() {
   const recUrl = useMemo(() => (recording ? URL.createObjectURL(recording.blob) : null), [recording])
   useEffect(() => () => void (recUrl && URL.revokeObjectURL(recUrl)), [recUrl])
   const busy = !!status
+  const dirty = !!(title.trim() || body.trim() || files.length || recording)
+  useEffect(() => {
+    state.current = { dirty, busy }
+  }, [state, dirty, busy])
+  // Stängs rutan medan något sparas fortsätter sparandet – då visas resultatet som ett meddelande
+  const alive = useRef(true)
+  useEffect(() => {
+    alive.current = true
+    return () => {
+      alive.current = false
+    }
+  }, [])
 
   function addFiles(list: FileList | null) {
     // Kopiera listan först: FileList är levande och töms när fältet nollställs, innan React hunnit köra uppdateringen
@@ -311,54 +417,51 @@ function NoteForm() {
       setBody('')
       setFiles([])
       setRecording(null)
+      if (alive.current) onSaved()
       if (failed.length) notify(`Sparat, men transkriberingen misslyckades för ${failed.join(', ')}. Försök igen från anteckningen.`, 'error')
       else notify('Anteckningen är sparad')
     } catch (e) {
-      setErr((e as Error).message)
+      const msg = (e as Error).message
+      if (alive.current) setErr(msg)
+      else notify(`Anteckningen ”${title.trim()}” kunde inte sparas helt: ${msg}`, 'error')
     } finally {
       setStatus(null)
     }
   }
 
   return (
-    <section aria-labelledby="notes-new">
-      <h2 id="notes-new" className="text-xl font-semibold text-ink">
-        Ny anteckning
-      </h2>
-      <p className="mt-1 text-base text-muted">Titeln behövs. Skriv en text, lägg till filer eller spela in – det du har.</p>
+    <div>
+      <p className="text-base text-muted">Titeln behövs. Skriv en text, lägg till filer eller spela in – det du har.</p>
       <form onSubmit={submit} className="mt-5 space-y-6" noValidate>
-        <div className="grid items-end gap-6 sm:grid-cols-[1fr_15rem]">
-          <Question label="Titel" error={titleErr}>
-            <Input
-              ref={titleRef}
-              value={title}
-              onChange={(e) => {
-                setTitle(e.target.value)
-                setTitleErr(null)
-              }}
-              aria-invalid={!!titleErr}
-              autoComplete="off"
-            />
-          </Question>
-          <Question label="Kommitté">
-            <Select value={committeeId} onChange={(e) => setCommitteeId(e.target.value)}>
-              <option value="">Ingen, gäller alla</option>
-              {auth.committees.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
-          </Question>
-        </div>
-
+        <Question label="Titel" error={titleErr}>
+          <Input
+            ref={titleRef}
+            value={title}
+            onChange={(e) => {
+              setTitle(e.target.value)
+              setTitleErr(null)
+            }}
+            aria-invalid={!!titleErr}
+            autoComplete="off"
+          />
+        </Question>
+        <Question label="Kommitté">
+          <Select value={committeeId} onChange={(e) => setCommitteeId(e.target.value)}>
+            <option value="">Ingen, gäller alla</option>
+            {auth.committees.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
+        </Question>
         <Question label="Text">
           <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} />
         </Question>
 
         <div>
           <p className="text-base font-medium text-ink">Filer</p>
-          <p id={filesHintId} className="mt-0.5 text-sm text-muted">
+          <p id={filesHintId} className="mt-0.5 text-base text-muted">
             Skärmdumpar, foton, Word, PDF eller röstmemon. Högst 50 MB per fil.
           </p>
           <input ref={fileRef} type="file" multiple accept={ACCEPT} className="hidden" onChange={(e) => addFiles(e.target.files)} />
@@ -398,7 +501,7 @@ function NoteForm() {
                     {recording.transcript}
                   </p>
                 )}
-                {!recording.transcript && transcribes && <p className="mt-2 text-sm text-muted">Ljudet skrivs ut till text när du sparar.</p>}
+                {!recording.transcript && transcribes && <p className="mt-2 text-base text-muted">Ljudet skrivs ut till text när du sparar.</p>}
                 <Button type="button" variant="ghost" className="mt-1 -ms-4" onClick={() => setRecording(null)} disabled={busy}>
                   <Trash2 className="size-4" aria-hidden /> Släng inspelningen
                 </Button>
@@ -422,11 +525,16 @@ function NoteForm() {
         )}
 
         <ErrorText>{err}</ErrorText>
-        <Button type="submit" loading={busy} className="w-full sm:w-auto">
-          {status ?? 'Spara anteckning'}
-        </Button>
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button type="button" variant="ghost" onClick={onCancel}>
+            {busy ? 'Stäng' : 'Avbryt'}
+          </Button>
+          <Button type="submit" loading={busy}>
+            {status ?? 'Spara anteckning'}
+          </Button>
+        </div>
       </form>
-    </section>
+    </div>
   )
 }
 
@@ -510,7 +618,7 @@ function NoteItem({ note }: { note: Note }) {
   const canDelete = canEdit || (isDemo && !!note.author_name && note.author_name === auth.displayName)
   const transcribes = api.mode === 'supabase'
   const name = note.file_name ?? 'Fil'
-  const meta = [note.author_name ?? 'Okänd', committee?.name, formatDateTime(note.created_at)].filter(Boolean).join(' · ')
+  const meta = [note.author_name ?? 'Okänd', committee?.name, `${formatShortDate(note.created_at)} ${localTime(note.created_at)}`].filter(Boolean).join(' · ')
 
   async function remove() {
     const ok = await confirmDialog({
@@ -553,7 +661,7 @@ function NoteItem({ note }: { note: Note }) {
   return (
     <article ref={ref} className="py-5">
       <div className="flex items-start gap-3">
-        <h3 className="min-w-0 flex-1 pt-2 text-lg font-semibold text-ink break-words">{note.title}</h3>
+        <h2 className="min-w-0 flex-1 pt-2 text-lg font-semibold text-ink break-words">{note.title}</h2>
         {canDelete && (
           <button
             onClick={remove}
@@ -607,7 +715,7 @@ function NoteItem({ note }: { note: Note }) {
         </details>
       )}
 
-      {note.kind === 'audio' && !note.transcript && isDemo && <p className="mt-1.5 text-sm text-muted">Utskrift av ljudet finns i den riktiga versionen.</p>}
+      {note.kind === 'audio' && !note.transcript && isDemo && <p className="mt-1.5 text-base text-muted">Utskrift av ljudet finns i den riktiga versionen.</p>}
 
       {note.kind === 'audio' && !note.transcript && transcribes && canEdit && (
         <div className="mt-3 flex flex-wrap items-center gap-2">

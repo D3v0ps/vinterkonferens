@@ -88,7 +88,7 @@ function PriceRow({ item: m, label }: { item: MenuItem; label: (k: string) => st
         </p>
       )}
       {!!m.tags.length && (
-        <p className="mt-0.5 text-sm text-muted">
+        <p className="mt-0.5 text-base text-ink-soft">
           {m.tags.map((tag, i) => (
             <Fragment key={tag}>
               {i > 0 && ' · '}

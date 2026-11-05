@@ -11,10 +11,10 @@ export default function ViewAsControl() {
   return (
     <label className="block px-3 py-2">
       <span className="mb-1 flex items-center gap-2 text-sm text-white/70">
-        <Eye className="size-4" /> Visa som
+        <Eye className="size-4" aria-hidden /> Visa som
       </span>
       <select
-        className="min-h-10 w-full rounded-lg border border-white/20 bg-ink-soft px-2 text-base text-white"
+        className="min-h-11 w-full rounded-lg border border-white/20 bg-ink-soft px-2 text-base text-white"
         value={auth.viewAs ?? ''}
         onChange={(e) => auth.setViewAs(e.target.value || null)}
       >

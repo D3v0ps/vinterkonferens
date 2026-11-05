@@ -10,7 +10,7 @@ import { eq, uuid } from '../../lib/db'
 import { pathToHash } from '../../lib/hashRouter'
 import { useList } from '../../lib/hooks'
 import { canPrint, isArtifact, safeStorage, saveFile } from '../../lib/platform'
-import { formatDay } from '../../lib/time'
+import { formatShortDay } from '../../lib/time'
 import type { Committee, ConferenceDay, Lang, Settings } from '../../lib/types'
 
 type Tab = 'general' | 'days' | 'committees' | 'qr'
@@ -75,18 +75,18 @@ function General() {
       <Field label="Konferensens namn">
         <Input value={s.conference_name} onChange={(e) => set({ conference_name: e.target.value })} />
       </Field>
-      <LocalizedInput label="Undertitel" value={s.tagline} onChange={(tagline) => set({ tagline })} />
+      <LocalizedInput label="Undertitel (valfritt)" hint="Visas överst på startsidan." value={s.tagline} onChange={(tagline) => set({ tagline })} />
       <div className="grid gap-5 sm:grid-cols-2">
-        <Field label="Plats / adress">
+        <Field label="Plats / adress (valfritt)" hint="Visas överst på startsidan.">
           <Input value={s.venue} onChange={(e) => set({ venue: e.target.value })} />
         </Field>
-        <Field label="Kontakt / info-disk">
+        <Field label="Kontakt / info-disk (valfritt)">
           <Input value={s.contact} onChange={(e) => set({ contact: e.target.value })} />
         </Field>
       </div>
-      <LocalizedInput label="Köket: öppettider & info" multiline value={s.kitchen_info} onChange={(kitchen_info) => set({ kitchen_info })} />
-      <LocalizedInput label="Fritids: information" multiline value={s.fritids_info} onChange={(fritids_info) => set({ fritids_info })} />
-      <LocalizedInput label="Fritids: pris" value={s.fritids_price} onChange={(fritids_price) => set({ fritids_price })} />
+      <LocalizedInput label="Köket: öppettider & info (valfritt)" multiline value={s.kitchen_info} onChange={(kitchen_info) => set({ kitchen_info })} />
+      <LocalizedInput label="Fritids: information (valfritt)" multiline value={s.fritids_info} onChange={(fritids_info) => set({ fritids_info })} />
+      <LocalizedInput label="Fritids: pris (valfritt)" value={s.fritids_price} onChange={(fritids_price) => set({ fritids_price })} />
       <ErrorText>{sv.err}</ErrorText>
       <Button
         loading={sv.busy}
@@ -137,8 +137,8 @@ function Days() {
           loading={sv.busy}
           onClick={() =>
             sv.run(async () => {
-              if (data.some((x) => x.date === date)) throw new Error(`${capitalize(formatDay(date))} är redan en konferensdag.`)
-              await api.insert('conference_days', { date, default_lang: lang, label: { sv: `Dag ${data.length + 1}`, en: `Day ${data.length + 1}`, ar: `اليوم ${data.length + 1}` } })
+              if (data.some((x) => x.date === date)) throw new Error(`${capitalize(formatShortDay(date))} är redan en konferensdag.`)
+              await api.insert('conference_days', { date, default_lang: lang, label: { sv: `Dag ${data.length + 1}`, en: `Day ${data.length + 1}`, ar: ['اليوم الأول', 'اليوم الثاني', 'اليوم الثالث', 'اليوم الرابع', 'اليوم الخامس'][data.length] ?? `اليوم ${data.length + 1}` } })
               setDate('')
             })
           }
@@ -160,7 +160,7 @@ function DayRow({ day, taken }: { day: ConferenceDay; taken: string[] }) {
   const sv = useSaver()
   async function remove() {
     const ok = await confirmDialog({
-      title: `Ta bort ${formatDay(day.date)}?`,
+      title: `Ta bort ${formatShortDay(day.date)}?`,
       message: 'Dagen försvinner ur konferensdagarna. Programmet och passen för dagen ligger kvar.',
       confirmLabel: 'Ta bort dagen',
       danger: true,
@@ -180,7 +180,7 @@ function DayRow({ day, taken }: { day: ConferenceDay; taken: string[] }) {
             <option value="en">Engelska</option>
           </Select>
         </Field>
-        {d.date && <span className="inline-block pb-2.5 text-base text-muted first-letter:uppercase">{formatDay(d.date)}</span>}
+        {d.date && <span className="inline-block pb-2.5 text-base text-muted first-letter:uppercase">{formatShortDay(d.date)}</span>}
       </div>
       <LocalizedInput label="Etikett" value={d.label} onChange={(label) => setD({ ...d, label })} />
       <div className="flex flex-wrap gap-2">
@@ -190,15 +190,15 @@ function DayRow({ day, taken }: { day: ConferenceDay; taken: string[] }) {
           onClick={() =>
             sv.run(async () => {
               if (!d.date) throw new Error('Välj ett datum.')
-              if (taken.includes(d.date)) throw new Error(`${capitalize(formatDay(d.date))} är redan en konferensdag.`)
+              if (taken.includes(d.date)) throw new Error(`${capitalize(formatShortDay(d.date))} är redan en konferensdag.`)
               await api.update('conference_days', d.id, { date: d.date, default_lang: d.default_lang, label: d.label })
             })
           }
         >
           {sv.ok ? 'Sparat ✓' : 'Spara'}
         </Button>
-        <Button variant="danger" onClick={remove}>
-          <Trash2 className="size-4" /> Ta bort
+        <Button variant="ghost" className="text-muted hover:text-rose-700" onClick={remove}>
+          <Trash2 className="size-4" aria-hidden /> Ta bort dagen
         </Button>
       </div>
       <ErrorText>{sv.err}</ErrorText>
@@ -310,8 +310,8 @@ function CommitteeRow({ c }: { c: Committee }) {
           {sv.ok ? 'Sparat ✓' : 'Spara'}
         </Button>
         {c.slug !== 'styrgruppen' && (
-          <Button variant="danger" disabled={sv.busy} onClick={remove} aria-label={`Ta bort ${c.name}`} title="Ta bort">
-            <Trash2 className="size-4" />
+          <Button variant="ghost" className="px-3 text-muted hover:text-rose-700" disabled={sv.busy} onClick={remove} aria-label={`Ta bort ${c.name}`} title="Ta bort">
+            <Trash2 className="size-4" aria-hidden />
           </Button>
         )}
       </div>
@@ -422,7 +422,13 @@ function QrCodes() {
             aria-invalid={!!raw.trim() && !base}
           />
         </Field>
-        {raw.trim() && !base && <p className="mt-1.5 text-base text-rose-700">Skriv en hel webbadress, till exempel https://vinterkonferensen.se/</p>}
+        {raw.trim() && !base && (
+          <p className="mt-1.5 text-base text-rose-700" role="alert">
+            {isArtifact
+              ? 'Skriv artifactens hela adress, till exempel https://claude.ai/artifact/abc123'
+              : 'Skriv en hel webbadress, till exempel https://vinterkonferensen.se/'}
+          </p>
+        )}
         {!raw.trim() && <p className="mt-3 text-base text-muted">Skriv in adressen så skapas QR-koderna.</p>}
         {!isArtifact && raw.trim() !== DEFAULT_QR_BASE && (
           <button type="button" className="mt-2 min-h-11 text-base text-ink underline underline-offset-4" onClick={() => setRaw(DEFAULT_QR_BASE)}>

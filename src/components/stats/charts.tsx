@@ -2,13 +2,23 @@
 // tunna staplar (≤24 px, 4 px rundad topp, rak mot baslinjen), hårfina rutnät,
 // text i textfärger – aldrig i seriefärgen – och tooltip på hover/fokus.
 // All text är minst 14 px och skrivs med gemener som vanlig text.
+// Färgerna är kalla och hämtas från temat: ingen accent (den är reserverad för handlingar och "pågår nu").
 import type { ReactNode } from 'react'
 import { cx } from '../ui'
 
-/** Kategoriska platser 1–3 (validerade mot vit yta, alla par: CVD ΔE ≥ 9,2). */
-export const SERIES = ['#2a78d6', '#eb6834', '#1baf7a'] as const
-export const INK = { primary: '#0b0b0b', secondary: '#52514e', muted: '#898781', grid: '#e1e0d9', axis: '#c3c2b7' }
-const TRACK = '#cde2fb' // ljusare steg av samma blå ramp
+/**
+ * Ordinal skala för svarsalternativ, bästa svaret först: mörkast = bäst, ljusast = sämst.
+ * Texten inuti en del är vit på den mörka och bläck på de två ljusa (kontrast ≥ 4,5:1).
+ */
+export const ORDINAL = [
+  { fill: 'var(--color-ink)', text: '#ffffff' },
+  { fill: '#7d8aa3', text: 'var(--color-ink)' },
+  { fill: '#c9d2de', text: 'var(--color-ink)' },
+] as const
+/** Enserie (staplar, mätare). */
+const BAR = 'var(--color-ink-soft)'
+export const INK = { primary: 'var(--color-ink)', secondary: 'var(--color-muted)', grid: 'var(--color-line)', axis: '#c9d2de' }
+const TRACK = 'var(--color-line)'
 
 /** Tooltip som visas när markören eller fokus ligger på föräldern (`group`). Värdet först, etiketten efter. */
 export function Tip({ value, label, className }: { value: ReactNode; label: ReactNode; className?: string }) {
@@ -39,7 +49,7 @@ export function Meter({ value, max, label }: { value: number; max: number; label
       className="h-2 w-full overflow-hidden rounded-full"
       style={{ background: TRACK }}
     >
-      <div className="h-full rounded-full" style={{ width: `${pct}%`, background: SERIES[0] }} />
+      <div className="h-full rounded-full" style={{ width: `${pct}%`, background: BAR }} />
     </div>
   )
 }
@@ -58,9 +68,22 @@ export interface Column {
   value: number
 }
 
-/** Stapeldiagram med en serie. Endast högsta stapeln får ett direktvärde. */
-export function ColumnChart({ data, height = 180, unit = 'st', label }: { data: Column[]; height?: number; unit?: string; label: string }) {
+/** Stapeldiagram med en serie. Endast högsta stapeln får ett direktvärde. Utan data: en mening i stället för tomma staplar. */
+export function ColumnChart({
+  data,
+  height = 180,
+  unit = 'st',
+  label,
+  empty = 'Inga svar ännu.',
+}: {
+  data: Column[]
+  height?: number
+  unit?: string
+  label: string
+  empty?: ReactNode
+}) {
   const max = Math.max(0, ...data.map((d) => d.value))
+  if (max === 0) return <p className="py-6 text-base text-muted">{empty}</p>
   const s = step(max)
   const top = Math.max(s, Math.ceil(max / s) * s)
   const ticks = Array.from({ length: Math.round(top / s) + 1 }, (_, i) => i * s)
@@ -90,7 +113,7 @@ export function ColumnChart({ data, height = 180, unit = 'st', label }: { data: 
                   className="group relative flex h-full min-w-0 flex-1 items-end justify-center outline-none focus-visible:bg-slate-100"
                 >
                   {d.value > 0 && (
-                    <div className="w-full max-w-6 rounded-t-[4px] transition group-hover:brightness-110" style={{ height: `${h}%`, background: SERIES[0] }} />
+                    <div className="w-full max-w-6 rounded-t-[4px] transition group-hover:opacity-80" style={{ height: `${h}%`, background: BAR }} />
                   )}
                   {i === peak && (
                     <span className="absolute start-1/2 -translate-x-1/2 text-sm font-semibold tabular-nums rtl:translate-x-1/2" style={{ bottom: `calc(${h}% + 2px)`, color: INK.secondary }}>
@@ -121,10 +144,15 @@ export interface Part {
   value: number
 }
 
-/** Hög segmenterad stapel (32 px): en helhet uppdelad i delar, andel skriven inuti när den får plats. */
-export function SegmentedBar({ parts, label }: { parts: Part[]; label: string }) {
+/**
+ * Hög segmenterad stapel (32 px): en helhet uppdelad i delar, andel skriven inuti när den får plats.
+ * Delarna ska komma i ordning från bästa till sämsta svaret – färgen följer platsen.
+ * Utan svar visas texten "Inga svar ännu" i stället för en tom stapel.
+ */
+export function SegmentedBar({ parts, label, empty = 'Inga svar ännu.' }: { parts: Part[]; label: string; empty?: ReactNode }) {
   const total = parts.reduce((a, p) => a + p.value, 0)
   const pct = (v: number) => (total ? Math.round((v / total) * 100) : 0)
+  if (total === 0) return <p className="text-base text-muted">{empty}</p>
   return (
     <div>
       <div
@@ -132,23 +160,20 @@ export function SegmentedBar({ parts, label }: { parts: Part[]; label: string })
         aria-label={`${label}: ${parts.map((p) => `${p.label} ${pct(p.value)} % (${p.value})`).join(', ')}`}
         className="flex h-8 w-full gap-[2px]"
       >
-        {total === 0 ? (
-          <div className="h-full w-full rounded-[4px] bg-slate-100" />
-        ) : (
-          parts.map((p, i) =>
-            p.value > 0 ? (
-              <div
-                key={p.key}
-                tabIndex={0}
-                className="group relative flex h-full items-center rounded-[4px] ps-2 text-sm font-semibold text-white outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-slate-400"
-                style={{ flexGrow: p.value, flexBasis: 0, background: SERIES[i % SERIES.length] }}
-              >
-                {p.value / total >= 0.16 && <span aria-hidden>{pct(p.value)} %</span>}
-                <Tip value={`${pct(p.value)} % (${p.value})`} label={p.label} />
-              </div>
-            ) : null,
-          )
-        )}
+        {parts.map((p, i) => {
+          const c = ORDINAL[Math.min(i, ORDINAL.length - 1)]
+          return p.value > 0 ? (
+            <div
+              key={p.key}
+              tabIndex={0}
+              className="group relative flex h-full items-center rounded-[4px] ps-2 text-sm font-semibold outline-none transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ink-soft focus-visible:ring-offset-1"
+              style={{ flexGrow: p.value, flexBasis: 0, background: c.fill, color: c.text }}
+            >
+              {p.value / total >= 0.16 && <span aria-hidden>{pct(p.value)} %</span>}
+              <Tip value={`${pct(p.value)} % (${p.value})`} label={p.label} />
+            </div>
+          ) : null
+        })}
       </div>
       <Legend items={parts.map((p) => p.label)} />
     </div>
@@ -160,7 +185,7 @@ export function Legend({ items }: { items: string[] }) {
     <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm" style={{ color: INK.secondary }}>
       {items.map((it, i) => (
         <li key={it} className="inline-flex items-center gap-1.5">
-          <span className="size-3 rounded-[3px]" style={{ background: SERIES[i % SERIES.length] }} aria-hidden />
+          <span className="size-3 rounded-[3px]" style={{ background: ORDINAL[Math.min(i, ORDINAL.length - 1)].fill }} aria-hidden />
           {it}
         </li>
       ))}
@@ -180,7 +205,7 @@ export function KeyFigures({ items, className }: { items: Figure[]; className?: 
     <dl className={cx('grid grid-cols-2 gap-x-6 gap-y-5 border-y border-line py-5', items.length === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-4', className)}>
       {items.map((it) => (
         <div key={it.label} className="min-w-0">
-          <dt className="text-sm text-muted">{it.label}</dt>
+          <dt className="text-base text-muted">{it.label}</dt>
           <dd className="mt-1 text-3xl font-semibold tabular-nums text-ink">{it.value}</dd>
           {it.sub && <dd className="mt-0.5 text-sm text-muted">{it.sub}</dd>}
         </div>

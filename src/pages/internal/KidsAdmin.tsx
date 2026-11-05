@@ -8,7 +8,7 @@ import { useAuth } from '../../lib/auth'
 import { useConference } from '../../lib/conference'
 import { downloadCsv, kr } from '../../lib/format'
 import { useList } from '../../lib/hooks'
-import { formatDateTime, now, weekdayShort } from '../../lib/time'
+import { formatShortDate, formatShortDay, localTime, now } from '../../lib/time'
 import type { Child, KidsRegistration, RegistrationStatus } from '../../lib/types'
 
 const STATUS: Record<RegistrationStatus, { label: string; tone: 'slate' | 'green' | 'amber' | 'red' | 'blue' }> = {
@@ -137,14 +137,14 @@ export default function KidsAdmin() {
         r.children.map((c) => c.name).join(', '),
         r.children.map((c) => c.age ?? '').join(', '),
         r.children.filter((c) => c.allergies).map((c) => `${c.name}: ${c.allergies}`).join('; '),
-        r.days.join(', '),
+        r.days.map((d) => formatShortDay(d)).join(', '),
         r.pickup_names,
         r.photo_consent ? 'Ja' : 'Nej',
         STATUS[r.status].label,
         r.paid ? 'Ja' : 'Nej',
         r.amount,
         r.notes,
-        formatDateTime(r.created_at),
+        `${formatShortDate(r.created_at)} ${localTime(r.created_at)}`,
       ]),
     )
   }
@@ -163,14 +163,9 @@ export default function KidsAdmin() {
         title="Fritids & expresskassa"
         subtitle="Sök på nummer, namn eller telefon. Nya anmälningar från besökarsidan dyker upp automatiskt."
         actions={
-          <>
-            <Button variant="secondary" onClick={exportCsv} disabled={!regs.length}>
-              <Download className="size-4" aria-hidden /> Ladda ner CSV
-            </Button>
-            <Button onClick={() => setNewOpen(true)}>
-              <UserPlus className="size-4" aria-hidden /> Ny anmälan på plats
-            </Button>
-          </>
+          <Button onClick={() => setNewOpen(true)}>
+            <UserPlus className="size-4" aria-hidden /> Ny anmälan på plats
+          </Button>
         }
       />
 
@@ -205,7 +200,7 @@ export default function KidsAdmin() {
             <option value="">Alla dagar</option>
             {days.map((d) => (
               <option key={d.id} value={d.date}>
-                {weekdayShort(d.date)} {d.date}
+                {formatShortDay(d.date)}
               </option>
             ))}
           </Select>
@@ -232,6 +227,13 @@ export default function KidsAdmin() {
         </div>
       )}
 
+      {regs.length > 0 && (
+        <div className="mt-8 border-t border-line pt-4">
+          <button type="button" className="inline-flex min-h-11 items-center gap-2 text-base text-ink underline underline-offset-4 hover:text-ink-soft disabled:opacity-50" onClick={exportCsv}>
+            <Download className="size-4" aria-hidden /> Ladda ner alla anmälningar (CSV)
+          </button>
+        </div>
+      )}
       <NewRegistration open={newOpen} onClose={() => setNewOpen(false)} />
     </div>
   )
@@ -279,7 +281,7 @@ function RegCard({ r, onPaid, onStatus }: { r: KidsRegistration; onPaid: () => v
       <dl className="mt-3 grid gap-x-6 gap-y-1 text-base sm:grid-cols-2">
         <div>
           <dt className="inline text-muted">Dagar: </dt>
-          <dd className="inline">{r.days.map((d) => weekdayShort(d)).join(', ') || '–'}</dd>
+          <dd className="inline">{r.days.map((d) => formatShortDay(d)).join(', ') || '–'}</dd>
         </div>
         <div>
           <dt className="inline text-muted">Får hämta: </dt>
@@ -292,7 +294,9 @@ function RegCard({ r, onPaid, onStatus }: { r: KidsRegistration; onPaid: () => v
         {r.checked_in_at && (
           <div>
             <dt className="inline text-muted">Incheckad: </dt>
-            <dd className="inline">{formatDateTime(r.checked_in_at)}</dd>
+            <dd className="inline tabular-nums">
+              {formatShortDate(r.checked_in_at)} {localTime(r.checked_in_at)}
+            </dd>
           </div>
         )}
         {r.notes && (
@@ -398,7 +402,7 @@ function NewRegistration({ open, onClose }: { open: boolean; onClose: () => void
   const setChild = (i: number, patch: Partial<Child>) => setChildren((cs) => cs.map((c, j) => (j === i ? { ...c, ...patch } : c)))
 
   return (
-    <Modal open={open} onClose={close} title="Ny anmälan på plats">
+    <Modal open={open} onClose={close} title="Ny anmälan på plats" persistent>
       {number != null ? (
         <div className="py-4 text-center">
           <p className="text-base text-muted">Anmälan är klar. Nummer:</p>
@@ -442,11 +446,11 @@ function NewRegistration({ open, onClose }: { open: boolean; onClose: () => void
                     </Button>
                   )}
                 </div>
-                <div className="grid grid-cols-[1fr_6rem] gap-3">
+                <div className="grid grid-cols-[1fr_8.5rem] gap-3">
                   <Field label="Namn">
                     <Input autoComplete="off" value={c.name} onChange={(e) => setChild(i, { name: e.target.value })} />
                   </Field>
-                  <Field label="Ålder">
+                  <Field label="Ålder (valfritt)">
                     <Input
                       type="number"
                       min={0}
@@ -456,7 +460,7 @@ function NewRegistration({ open, onClose }: { open: boolean; onClose: () => void
                     />
                   </Field>
                 </div>
-                <Field label="Allergier eller specialkost" hint="Lämna tomt om det inte finns några.">
+                <Field label="Allergier eller specialkost (valfritt)" hint="Lämna tomt om det inte finns några.">
                   <Input value={c.allergies} onChange={(e) => setChild(i, { allergies: e.target.value })} />
                 </Field>
               </fieldset>
@@ -473,17 +477,17 @@ function NewRegistration({ open, onClose }: { open: boolean; onClose: () => void
               {days.map((d) => (
                 <Checkbox
                   key={d.id}
-                  label={`${weekdayShort(d.date)} ${d.date.slice(5)}`}
+                  label={formatShortDay(d.date)}
                   checked={chosenDays.includes(d.date)}
                   onChange={(on) => setSel(on ? [...new Set([...chosenDays, d.date])] : chosenDays.filter((x) => x !== d.date))}
                 />
               ))}
             </div>
           </fieldset>
-          <Field label="Får hämta barnet" hint="Namn på andra vuxna som får hämta.">
+          <Field label="Får hämta barnet (valfritt)" hint="Namn på andra vuxna som får hämta.">
             <Input value={pickup} onChange={(e) => setPickup(e.target.value)} />
           </Field>
-          <Field label="Övrigt">
+          <Field label="Övrigt (valfritt)">
             <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
           </Field>
           <Checkbox label="OK att barnet syns på bild" checked={photo} onChange={setPhoto} />

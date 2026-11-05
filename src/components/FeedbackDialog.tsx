@@ -1,4 +1,4 @@
-import { useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { Check, CheckCircle2, Star } from 'lucide-react'
 import { api } from '../lib/api'
 import { uuid } from '../lib/db'
@@ -59,6 +59,60 @@ const uniqueIds = () => api.mode !== 'supabase'
 export function useRated() {
   const rated = useSyncExternalStore(subscribeRated, getRated)
   return { rated, isRated: (id: string) => rated.includes(id), markRated }
+}
+
+/**
+ * Modal för formulär som inte får tömmas av misstag. `persistent` räcker inte ensamt i Chromium: efter
+ * ett par Esc i rad (utan klick emellan) går cancel inte längre att stoppa, dialogen stängs ändå och
+ * Modal tar bort innehållet. Därför stoppas Esc redan vid tangenttrycket, och stängs dialogen ändå på
+ * annat sätt (t.ex. Androids bakåtgest) öppnas den igen direkt med fokus och scroll kvar – innehållet
+ * är fortfarande monterat. Krysset och formulärets egna knappar stänger som vanligt.
+ * (Hör egentligen hemma i Modal i ui.tsx; när den gör samma sak kan den här bytas mot Modal.)
+ */
+export function FormModal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: ReactNode; children: ReactNode }) {
+  const anchor = useRef<HTMLSpanElement>(null)
+  const saved = useRef<{ focus: Element | null; scroll: [Element, number][] } | null>(null)
+
+  useEffect(() => {
+    const d = open ? anchor.current?.closest('dialog') : null
+    if (!d) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !e.isComposing && e.target instanceof Element && e.target.closest('dialog') === d) e.preventDefault()
+    }
+    // Inför en stängning vi inte bad om: kom ihåg fokus och scroll så att allt är som förut efteråt.
+    const onCancel = () => {
+      const scroll: [Element, number][] = []
+      for (let el = anchor.current?.parentElement; el && el !== d; el = el.parentElement) if (el.scrollTop) scroll.push([el, el.scrollTop])
+      saved.current = { focus: document.activeElement, scroll }
+    }
+    d.addEventListener('keydown', onKey)
+    d.addEventListener('cancel', onCancel)
+    return () => {
+      d.removeEventListener('keydown', onKey)
+      d.removeEventListener('cancel', onCancel)
+    }
+  }, [open])
+
+  function handleClose() {
+    const d = anchor.current?.closest('dialog')
+    // Krysset anropar oss medan dialogen är öppen. Är den redan stängd var det webbläsaren: öppna igen.
+    if (open && d && !d.open) {
+      d.showModal()
+      const s = saved.current
+      saved.current = null
+      s?.scroll.forEach(([el, y]) => (el.scrollTop = y))
+      if (s?.focus instanceof HTMLElement && d.contains(s.focus)) s.focus.focus({ preventScroll: true })
+      return
+    }
+    onClose()
+  }
+
+  return (
+    <Modal open={open} onClose={handleClose} title={title} persistent>
+      <span ref={anchor} hidden />
+      {children}
+    </Modal>
+  )
 }
 
 type Q = { key: keyof FeedbackAnswers; options: string[] }
@@ -125,12 +179,13 @@ export default function FeedbackDialog({ session, onClose, onDone }: { session: 
   const label = (key: string) => (t as unknown as Record<string, string>)[key]
 
   return (
-    <Modal open={!!session} onClose={reset} title={sent ? t.rated : t.rateTitle}>
+    // FormModal: Esc ska inte tömma ett halvifyllt betyg
+    <FormModal open={!!session} onClose={reset} title={sent ? t.rated : t.rateTitle}>
       {session &&
         (sent ? (
           <div className="py-4 text-center">
             <CheckCircle2 className="mx-auto size-12 text-emerald-700" strokeWidth={1.75} aria-hidden />
-            <p className="mt-3 text-lg font-medium text-ink">{t.rated}</p>
+            <p className="mt-3 text-lg text-ink">{t.ratedBody}</p>
             <Button className="mt-6 w-full sm:w-auto" onClick={reset}>
               {t.close}
             </Button>
@@ -209,6 +264,6 @@ export default function FeedbackDialog({ session, onClose, onDone }: { session: 
             </div>
           </div>
         ))}
-    </Modal>
+    </FormModal>
   )
 }

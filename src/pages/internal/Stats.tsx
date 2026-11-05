@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react'
 import { Check, Download, Star, TriangleAlert } from 'lucide-react'
-import { Badge, Button, Empty, PageHeader, Spinner, Tabs } from '../../components/ui'
+import { Button, Empty, PageHeader, Spinner, Tabs } from '../../components/ui'
 import { ColumnChart, KeyFigures, Meter, SegmentedBar, type Column } from '../../components/stats/charts'
 import { CHECKPOINT_LABEL, KITCHEN_CATS, catLabel, minuteOfDay } from '../../components/stats/labels'
 import { useConference } from '../../lib/conference'
 import { where } from '../../lib/db'
 import { downloadCsv, num, tr } from '../../lib/format'
 import { useList } from '../../lib/hooks'
-import { localDate, localTime, shiftTime, todayStr, weekdayShort, zonedToUtc, formatDateTime } from '../../lib/time'
+import { formatShortDate, formatShortDay, localDate, localTime, shiftTime, todayStr, zonedToUtc } from '../../lib/time'
 import type { Feedback, FlowCount, KitchenCategory, KitchenEvent, Session } from '../../lib/types'
 
 type Tab = 'hall' | 'kitchen' | 'feedback'
@@ -29,55 +29,59 @@ export default function Stats() {
   const title = (id: string | null) => tr(sessions.data.find((s) => s.id === id)?.title, 'sv')
   const lectures = sessions.data.filter((s) => s.kind === 'lecture' && localDate(s.starts_at) === selected)
 
-  // Nedladdningar längst ner på sidan, så att sidhuvudet bara har rubriken
-  const exports = (
+  // Nedladdningar längst ner på sidan, så att sidhuvudet bara har rubriken. Knappar utan data visas inte.
+  const hasDownloads = counts.data.length > 0 || events.data.length > 0 || feedback.data.length > 0
+  const exports = hasDownloads && (
     <section className="mt-12 border-t border-line pt-6">
       <h2 className="text-xl font-semibold text-ink">Ladda ner</h2>
       <p className="mt-1 text-base text-muted">CSV-filer som öppnas direkt i Excel eller Numbers.</p>
       <div className="mt-3 flex flex-wrap gap-2">
-        <Button
-          variant="secondary"
-          disabled={!counts.data.length}
-          onClick={() =>
-            downloadCsv(
-              'rakningar.csv',
-              ['Datum', 'Tid', 'Område', 'Föreläsning', 'Räknepunkt', 'Antal', 'Anteckning', 'Räknad av'],
-              counts.data.map((c) => [localDate(c.counted_at), localTime(c.counted_at), c.area === 'hall' ? 'Salen' : 'Köket', title(c.session_id), CHECKPOINT_LABEL[c.checkpoint], c.count, c.note, c.author_name]),
-            )
-          }
-        >
-          <Download className="size-4" aria-hidden /> Alla räkningar
-        </Button>
-        <Button
-          variant="secondary"
-          disabled={!events.data.length}
-          onClick={() =>
-            downloadCsv(
-              `koksflode-${selected}.csv`,
-              ['Datum', 'Tid', 'Kategori', 'Antal', 'Registrerad av'],
-              events.data.map((e) => [localDate(e.occurred_at), localTime(e.occurred_at), catLabel(e.category), e.quantity, e.author_name]),
-            )
-          }
-        >
-          <Download className="size-4" aria-hidden /> Köksflödet {weekdayShort(selected)} {selected.slice(5)}
-        </Button>
-        <Button
-          variant="secondary"
-          disabled={!feedback.data.length}
-          onClick={() =>
-            downloadCsv(
-              'betyg.csv',
-              ['Datum', 'Tid', 'Föreläsning', 'Stjärnor', 'Relevant', 'Längd', 'Ankomst', 'Kommentar', 'Språk'],
-              feedback.data.map((f) => [
-                localDate(f.created_at), localTime(f.created_at), title(f.session_id), f.rating,
-                answerLabel('relevance', f.answers.relevance), answerLabel('length', f.answers.length), answerLabel('arrival', f.answers.arrival),
-                f.comment, f.lang,
-              ]),
-            )
-          }
-        >
-          <Download className="size-4" aria-hidden /> Alla betyg
-        </Button>
+        {counts.data.length > 0 && (
+          <Button
+            variant="secondary"
+            onClick={() =>
+              downloadCsv(
+                'rakningar.csv',
+                ['Datum', 'Tid', 'Område', 'Föreläsning', 'Räknepunkt', 'Antal', 'Anteckning', 'Räknad av'],
+                counts.data.map((c) => [localDate(c.counted_at), localTime(c.counted_at), c.area === 'hall' ? 'Salen' : 'Köket', title(c.session_id), CHECKPOINT_LABEL[c.checkpoint], c.count, c.note, c.author_name]),
+              )
+            }
+          >
+            <Download className="size-4" aria-hidden /> Alla räkningar
+          </Button>
+        )}
+        {events.data.length > 0 && (
+          <Button
+            variant="secondary"
+            onClick={() =>
+              downloadCsv(
+                `koksflode-${selected}.csv`,
+                ['Datum', 'Tid', 'Kategori', 'Antal', 'Registrerad av'],
+                events.data.map((e) => [localDate(e.occurred_at), localTime(e.occurred_at), catLabel(e.category), e.quantity, e.author_name]),
+              )
+            }
+          >
+            <Download className="size-4" aria-hidden /> Köksflödet {formatShortDay(selected)}
+          </Button>
+        )}
+        {feedback.data.length > 0 && (
+          <Button
+            variant="secondary"
+            onClick={() =>
+              downloadCsv(
+                'betyg.csv',
+                ['Datum', 'Tid', 'Föreläsning', 'Stjärnor', 'Relevant', 'Längd', 'Ankomst', 'Kommentar', 'Språk'],
+                feedback.data.map((f) => [
+                  localDate(f.created_at), localTime(f.created_at), title(f.session_id), f.rating,
+                  answerLabel('relevance', f.answers.relevance), answerLabel('length', f.answers.length), answerLabel('arrival', f.answers.arrival),
+                  f.comment, f.lang,
+                ]),
+              )
+            }
+          >
+            <Download className="size-4" aria-hidden /> Alla betyg
+          </Button>
+        )}
       </div>
     </section>
   )
@@ -85,11 +89,7 @@ export default function Stats() {
   return (
     <>
       <PageHeader
-        title={
-          <>
-            Statistik & <em className="font-display font-normal italic">betyg</em>
-          </>
-        }
+        title="Statistik & betyg"
         subtitle="Publikflöde, köksflöde och besökarnas betyg, dag för dag."
       />
       <div className="mb-8 flex flex-wrap items-center gap-2">
@@ -103,7 +103,7 @@ export default function Stats() {
           ]}
         />
         {days.length > 0 && (
-          <Tabs value={selected} onChange={setDay} options={days.map((d) => ({ value: d.date, label: `${weekdayShort(d.date)} ${d.date.slice(5)}` }))} />
+          <Tabs value={selected} onChange={setDay} options={days.map((d) => ({ value: d.date, label: formatShortDay(d.date) }))} />
         )}
       </div>
       {sessions.loading || counts.loading || feedback.loading ? (
@@ -159,8 +159,8 @@ function Audience({ lectures, counts, feedback }: { lectures: Session[]; counts:
       />
 
       {lateN > 0 && (
-        <div className="flex gap-3 rounded-xl bg-amber-50 px-4 py-3 text-base text-amber-950">
-          <TriangleAlert className="mt-0.5 size-5 shrink-0 text-amber-700" aria-hidden />
+        <div className="flex gap-3 rounded-xl bg-ice px-4 py-3 text-base text-ink">
+          <TriangleAlert className="mt-0.5 size-5 shrink-0 text-ink" aria-hidden />
           <p>
             <b className="font-semibold">Publiken kommer sent på {lateN} av {judged.length} föreläsningar.</b> Prova ett förprogram, t.ex. poesi, 15
             minuter innan och börja visa in folk tidigare.
@@ -169,7 +169,7 @@ function Audience({ lectures, counts, feedback }: { lectures: Session[]; counts:
         </div>
       )}
 
-      <div className="divide-y divide-line border-y border-line">
+      <div className="divide-y divide-line border-b border-line">
         {rows.map((r) => (
           <section key={r.s.id} className="py-6">
             <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
@@ -181,13 +181,13 @@ function Audience({ lectures, counts, feedback }: { lectures: Session[]; counts:
                 <h2 className="text-lg font-semibold text-ink">{tr(r.s.title, 'sv')}</h2>
               </div>
               {r.late ? (
-                <Badge tone="amber">
-                  <TriangleAlert className="size-3.5" aria-hidden /> Publiken kom sent
-                </Badge>
+                <p className="inline-flex items-center gap-1.5 text-base text-ink">
+                  <TriangleAlert className="size-4 text-ink" aria-hidden /> Publiken kom sent
+                </p>
               ) : r.late === false ? (
-                <Badge tone="green">
-                  <Check className="size-3.5" aria-hidden /> På plats i tid
-                </Badge>
+                <p className="inline-flex items-center gap-1.5 text-base text-muted">
+                  <Check className="size-4" aria-hidden /> På plats i tid
+                </p>
               ) : null}
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
@@ -270,7 +270,7 @@ function KitchenStats({ events, queue }: { events: KitchenEvent[]; queue: FlowCo
           Totalt {num(series.reduce((a, b) => a + b, 0))} st mellan 09 och 20.
           {bins.outside > 0 && ` ${bins.outside} st registrerades utanför den tiden.`}
         </p>
-        <ColumnChart data={data} label={`Köksflöde per halvtimme, ${cat === 'all' ? 'alla' : catLabel(cat)}`} />
+        <ColumnChart data={data} label={`Köksflöde per halvtimme, ${cat === 'all' ? 'alla' : catLabel(cat)}`} empty="Inget registrerat ännu." />
       </section>
 
       <div className="grid gap-10 border-t border-line pt-6 sm:grid-cols-2 sm:gap-8">
@@ -334,9 +334,10 @@ function KitchenStats({ events, queue }: { events: KitchenEvent[]; queue: FlowCo
 
 // ---------------------------------------------------------------- Betyg
 
+// Svarsalternativen står i ordning från bästa till sämsta svaret: diagrammens färger följer ordningen.
 const QUESTIONS = [
   { key: 'relevance', label: 'Var innehållet relevant?', opts: [['yes', 'Ja'], ['partly', 'Delvis'], ['no', 'Nej']] },
-  { key: 'length', label: 'Hur var längden?', opts: [['short', 'För kort'], ['good', 'Lagom'], ['long', 'För lång']] },
+  { key: 'length', label: 'Hur var längden?', opts: [['good', 'Lagom'], ['short', 'För kort'], ['long', 'För lång']] },
   { key: 'arrival', label: 'När kom de till salen?', opts: [['early', 'Före start'], ['ontime', 'Precis i tid'], ['late', 'Efter start']] },
 ] as const
 
@@ -364,7 +365,7 @@ function Ratings({ lectures, feedback }: { lectures: Session[]; feedback: Feedba
           { label: 'Föreläsningar med svar', value: `${rated.length} av ${lectures.length}` },
         ]}
       />
-      <div className="divide-y divide-line border-y border-line">
+      <div className="divide-y divide-line border-b border-line">
         {lectures.map((s) => {
           const fs = day.filter((f) => f.session_id === s.id)
           const comments = fs.filter((f) => f.comment?.trim()).slice(0, 5)
@@ -380,7 +381,7 @@ function Ratings({ lectures, feedback }: { lectures: Session[]; feedback: Feedba
                   <h2 className="text-lg font-semibold text-ink">{tr(s.title, 'sv')}</h2>
                 </div>
                 {fs.length > 0 && (
-                  <div className="text-end">
+                  <div className="sm:text-end">
                     <div className="inline-flex items-center gap-1.5 text-2xl font-semibold tabular-nums text-ink">
                       <Star className="size-5 fill-amber-400 text-amber-400" aria-hidden /> {one(avg(fs))}
                     </div>
@@ -393,17 +394,21 @@ function Ratings({ lectures, feedback }: { lectures: Session[]; feedback: Feedba
               ) : (
                 <>
                   <p className="mt-1 text-sm text-muted tabular-nums">{dist.map(([n, c]) => `${n}★ ${c}`).join(' · ')}</p>
-                  <div className="mt-4 grid gap-5 sm:grid-cols-3">
-                    {QUESTIONS.map((q) => (
-                      <div key={q.key}>
-                        <div className="mb-2 text-base font-medium text-ink">{q.label}</div>
-                        <SegmentedBar
-                          label={q.label}
-                          parts={q.opts.map(([k, l]) => ({ key: k, label: l, value: fs.filter((f) => f.answers[q.key] === k).length }))}
-                        />
-                      </div>
-                    ))}
-                  </div>
+                  {!fs.some((f) => QUESTIONS.some((q) => f.answers?.[q.key])) ? (
+                    <p className="mt-4 text-base text-muted">Inga svar på frågorna ännu.</p>
+                  ) : (
+                    <div className="mt-4 grid gap-5 sm:grid-cols-3">
+                      {QUESTIONS.map((q) => (
+                        <div key={q.key}>
+                          <div className="mb-2 text-base font-medium text-ink">{q.label}</div>
+                          <SegmentedBar
+                            label={q.label}
+                            parts={q.opts.map(([k, l]) => ({ key: k, label: l, value: fs.filter((f) => f.answers?.[q.key] === k).length }))}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   {comments.length > 0 && (
                     <div className="mt-5">
                       <h3 className="mb-2 text-base font-medium text-ink">Senaste kommentarer</h3>
@@ -412,7 +417,7 @@ function Ratings({ lectures, feedback }: { lectures: Session[]; feedback: Feedba
                           <li key={f.id} className="border-s-2 border-line ps-3">
                             <q className="text-ink">{f.comment}</q>
                             <span className="block text-sm text-muted">
-                              {f.rating}★ · {formatDateTime(f.created_at)}
+                              {f.rating}★ · {formatShortDate(f.created_at)} {localTime(f.created_at)}
                             </span>
                           </li>
                         ))}

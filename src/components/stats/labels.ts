@@ -10,7 +10,7 @@ export const CHECKPOINT_LABEL: Record<Checkpoint, string> = {
 }
 
 export const KITCHEN_CATS: { key: KitchenCategory; label: string; icon: LucideIcon }[] = [
-  { key: 'guest', label: 'Gäst / person', icon: Users },
+  { key: 'guest', label: 'Gäst', icon: Users },
   { key: 'food', label: 'Mat', icon: Utensils },
   { key: 'coffee', label: 'Kaffe', icon: Coffee },
   { key: 'tea', label: 'Te', icon: Leaf },

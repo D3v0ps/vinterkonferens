@@ -1,11 +1,11 @@
 // Delade byggstenar för besökarsidorna: sidrubrik, dagväljare, programlista och anslag.
-import { useId, useMemo, useState } from 'react'
+import { useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { Check, Clock, MapPin, Music, Pin, Star } from 'lucide-react'
 import { useConference } from '../lib/conference'
 import { tr } from '../lib/format'
 import { useList, useNow } from '../lib/hooks'
 import { Tr, useI18n } from '../lib/i18n'
-import { localDate, localTime, minutesBetween, relMinutes, sessionProgress, sessionStatus, weekdayShort } from '../lib/time'
+import { formatShortDay, localDate, localTime, minutesBetween, relMinutes, sessionProgress, sessionStatus } from '../lib/time'
 import type { Audience, ConferenceDay, Post, PostPage, Session } from '../lib/types'
 import FeedbackDialog, { useRated } from './FeedbackDialog'
 import { Button, Empty, cx } from './ui'
@@ -47,19 +47,59 @@ export function useSelectedDay() {
   return { days, date, setDate: setPicked }
 }
 
+/**
+ * Sant om någon av texterna inte får plats på en rad i flikarna. Då bryts alla flikar på samma ställe
+ * (veckodag / datum) i stället för att bara de längsta radbryts, så att flikarna ser lika ut.
+ */
+function useTooTight(ref: RefObject<HTMLDivElement | null>, labels: string[]) {
+  const [tight, setTight] = useState(false)
+  const key = labels.join('|')
+  useLayoutEffect(() => {
+    const el = ref.current
+    const ctx = document.createElement('canvas').getContext('2d')
+    if (!el || !ctx) return
+    let width = -1
+    const check = (force = false) => {
+      const tab = el.querySelector<HTMLElement>('[role=tab]')
+      const line = tab?.firstElementChild
+      if (!tab || !line || (!force && tab.clientWidth === width)) return
+      width = tab.clientWidth
+      const cs = getComputedStyle(tab)
+      const ls = getComputedStyle(line)
+      const room = tab.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)
+      ctx.font = `${ls.fontWeight} ${ls.fontSize} ${ls.fontFamily}`
+      setTight(key.split('|').some((l) => ctx.measureText(l.charAt(0).toLocaleUpperCase() + l.slice(1)).width > room - 1))
+    }
+    check(true)
+    const ro = new ResizeObserver(() => check())
+    ro.observe(el)
+    // Webbtypsnittet kan komma efter första mätningen.
+    void document.fonts?.ready.then(() => check(true))
+    return () => ro.disconnect()
+  }, [ref, key])
+  return tight
+}
+
 export function DayTabs({ days, value, onChange }: { days: ConferenceDay[]; value: string | null; onChange: (d: string) => void }) {
   const { lang, t } = useI18n()
   const { today } = useConference()
+  const ref = useRef<HTMLDivElement>(null)
+  // formatShortDay tar bort "," men inte arabiskans "،"; utan det får "الجمعة 6 نوفمبر" plats på en rad i telefonen.
+  const labels = days.map((d) => formatShortDay(d.date, lang).replace(/،/g, ''))
+  const tight = useTooTight(ref, labels)
   if (days.length < 2) return null
   return (
     <div
+      ref={ref}
       className="no-print mb-6 grid gap-1 rounded-2xl bg-ice p-1"
       style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }}
       role="tablist"
       aria-label={t.chooseDay}
     >
-      {days.map((d) => {
+      {days.map((d, i) => {
         const on = value === d.date
+        const isToday = d.date === today
+        const [weekday, ...rest] = labels[i].split(' ')
         return (
           <button
             key={d.id}
@@ -68,13 +108,22 @@ export function DayTabs({ days, value, onChange }: { days: ConferenceDay[]; valu
             aria-selected={on}
             onClick={() => onChange(d.date)}
             className={cx(
-              'flex min-h-14 flex-col items-center justify-center rounded-xl px-2 py-1.5 leading-tight transition-colors',
+              'flex min-h-14 min-w-0 flex-col items-center justify-center rounded-xl px-1 py-1.5 text-center leading-tight transition-colors',
               on ? 'bg-white text-ink shadow-sm' : 'text-muted hover:text-ink',
             )}
           >
-            <span className="text-base font-semibold first-letter:uppercase">{d.date === today ? t.today : weekdayShort(d.date, lang)}</span>
-            {tr(d.label, lang) && (
+            {tight ? (
+              <span className="text-base font-semibold">
+                <span className="block first-letter:uppercase">{weekday}</span>
+                <span className="block">{rest.join(' ')}</span>
+              </span>
+            ) : (
+              <span className="text-base font-semibold whitespace-nowrap first-letter:uppercase">{labels[i]}</span>
+            )}
+            {(isToday || tr(d.label, lang)) && (
               <span className="mt-0.5 max-w-full truncate text-sm text-muted">
+                {isToday && <span className="font-medium text-ink">{t.today}</span>}
+                {isToday && tr(d.label, lang) && ' · '}
                 <Tr value={d.label} />
               </span>
             )}
@@ -99,9 +148,10 @@ function LiveDot() {
   return <span className="inline-block size-2.5 shrink-0 rounded-full bg-accent" aria-hidden />
 }
 
+/** Hur långt programpunkten har kommit. Fylls från sidans början, alltså från höger på arabiska. */
 function Progress({ value }: { value: number }) {
   return (
-    <div className="mt-3 h-1 overflow-hidden rounded-full bg-line" dir="ltr" aria-hidden>
+    <div className="mt-3 h-1 overflow-hidden rounded-full bg-line" aria-hidden>
       <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${value * 100}%` }} />
     </div>
   )
@@ -206,8 +256,12 @@ export function Agenda({ sessions, showFeedback = true }: { sessions: Session[];
   )
 }
 
-/** Nu & nästa: vad pågår, vad kommer härnäst, plus en uppmaning att betygsätta det som just tog slut. */
-export function NowNext({ sessions }: { sessions: Session[] }) {
+/**
+ * Nu & nästa: vad pågår och vad kommer härnäst. Med `rateBanner` (startsidan) även en uppmaning att
+ * betygsätta det som just tog slut. Programsidan har betygsknappen i listan i stället, så att samma
+ * föreläsning inte erbjuds två gånger.
+ */
+export function NowNext({ sessions, rateBanner = true }: { sessions: Session[]; rateBanner?: boolean }) {
   const { t, lang } = useI18n()
   const at = useNow(15_000)
   const { isRated, markRated } = useRated()
@@ -217,9 +271,11 @@ export function NowNext({ sessions }: { sessions: Session[] }) {
   if (!lectures.length) return null
   const ongoing = lectures.find((s) => sessionStatus(s, at) === 'ongoing')
   const next = lectures.find((s) => sessionStatus(s, at) === 'upcoming')
-  const justEnded = [...lectures]
-    .reverse()
-    .find((s) => sessionStatus(s, at) === 'done' && s.feedback_enabled && minutesBetween(s.ends_at, at) <= 45 && !isRated(s.id))
+  const justEnded = rateBanner
+    ? [...lectures]
+        .reverse()
+        .find((s) => sessionStatus(s, at) === 'done' && s.feedback_enabled && minutesBetween(s.ends_at, at) <= 45 && !isRated(s.id))
+    : undefined
   const preshow = next && sessions.find((s) => s.kind === 'preshow' && s.ends_at <= next.starts_at && minutesBetween(s.ends_at, next.starts_at) <= 15)
   const allDone = !ongoing && !next && lectures.every((s) => sessionStatus(s, at) === 'done')
 
@@ -244,7 +300,8 @@ export function NowNext({ sessions }: { sessions: Session[] }) {
         </div>
       )}
 
-      <div className="divide-y divide-line border-y border-line">
+      {/* Bara en linje ovanför: listan eller ingångarna under har sin egen. */}
+      <div className="divide-y divide-line border-t border-line">
         {ongoing && (
           <div className="py-4">
             <p className="flex items-center gap-2 text-base font-medium text-accent-strong">
@@ -286,7 +343,7 @@ export function NowNext({ sessions }: { sessions: Session[] }) {
         )}
         {allDone && <p className="py-4 text-base text-muted">{t.noMoreToday}</p>}
       </div>
-      <FeedbackDialog session={rating} onClose={() => setRating(null)} onDone={markRated} />
+      {rateBanner && <FeedbackDialog session={rating} onClose={() => setRating(null)} onDone={markRated} />}
     </section>
   )
 }

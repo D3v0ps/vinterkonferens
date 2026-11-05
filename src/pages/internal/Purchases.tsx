@@ -7,9 +7,9 @@ import { useAuth, useAuthorFields } from '../../lib/auth'
 import { safeFileName, uuid } from '../../lib/db'
 import { kr, num } from '../../lib/format'
 import { useList } from '../../lib/hooks'
-import { todayStr } from '../../lib/time'
+import { formatShortDate, todayStr } from '../../lib/time'
 import type { Purchase, PurchaseItem } from '../../lib/types'
-import { canOpenUrl, FileLinks, Question } from './Notes'
+import { canOpenUrl, FileLinks, FILTER_MIN, Question } from './Notes'
 
 export const toNum = (s: string | number | null | undefined) => {
   if (typeof s === 'number') return s
@@ -50,6 +50,7 @@ export default function Purchases() {
   // I den ordning produkterna skrevs in (radernas id är slumpade)
   const items = useList('purchase_items', { order: [{ col: 'created_at' }] })
   const [editing, setEditing] = useState<Purchase | 'new' | null>(null)
+  const form = useRef<FormState>({ dirty: false, busy: false })
   const [open, setOpen] = useState<string | null>(null)
   const [committee, setCommittee] = useState('')
   const [err, setErr] = useState<string | null>(null)
@@ -60,7 +61,24 @@ export default function Purchases() {
     return m
   }, [items.data])
 
-  const shown = purchases.data.filter((p) => !committee || p.committee_id === committee)
+  // Kommittéfiltret bara när listan är lång; annars gäller det inte (så att inget göms utan att synas)
+  const filtering = purchases.data.length > FILTER_MIN
+  const shown = purchases.data.filter((p) => !filtering || !committee || p.committee_id === committee)
+
+  async function closeForm() {
+    // Pågår sparandet fortsätter det när rutan stängs; annars fråga innan ändringar slängs
+    if (form.current.dirty && !form.current.busy) {
+      const ok = await confirmDialog({
+        title: editing === 'new' ? 'Släng inköpet?' : 'Släng ändringarna?',
+        message: 'Det du har fyllt i sparas inte.',
+        confirmLabel: 'Släng',
+        cancelLabel: 'Fortsätt',
+        danger: true,
+      })
+      if (!ok) return
+    }
+    setEditing(null)
+  }
   const sum = shown.reduce((s, p) => s + purchaseTotals(p, byPurchase.get(p.id) ?? []).total, 0)
 
   async function remove(p: Purchase) {
@@ -96,19 +114,23 @@ export default function Purchases() {
         }
       />
 
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <Select value={committee} onChange={(e) => setCommittee(e.target.value)} className="w-full sm:w-auto" aria-label="Kommitté">
-          <option value="">Alla kommittéer</option>
-          {auth.committees.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </Select>
-        <p className="text-base text-muted">
+      {filtering && (
+        <Question label="Kommitté" className="mb-4 sm:max-w-xs">
+          <Select value={committee} onChange={(e) => setCommittee(e.target.value)}>
+            <option value="">Alla kommittéer</option>
+            {auth.committees.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
+        </Question>
+      )}
+      {purchases.data.length > 0 && (
+        <p className="mb-4 text-base text-muted">
           {shown.length} inköp · totalt <b className="font-semibold text-ink tabular-nums">{kr(sum)}</b>
         </p>
-      </div>
+      )}
 
       <ErrorText>{err}</ErrorText>
 
@@ -125,7 +147,7 @@ export default function Purchases() {
             const t = purchaseTotals(p, rows)
             const c = auth.committees.find((x) => x.id === p.committee_id)
             const isOpen = open === p.id
-            const meta = [p.purchased_on, `${rows.length} ${rows.length === 1 ? 'produkt' : 'produkter'}`, c?.name].filter(Boolean).join(' · ')
+            const meta = [p.purchased_on && formatShortDate(p.purchased_on), `${rows.length} ${rows.length === 1 ? 'produkt' : 'produkter'}`, c?.name].filter(Boolean).join(' · ')
             return (
               <article key={p.id}>
                 {/* Rubrik med knapp i (inte tvärtom), så att skärmläsare hittar inköpen som rubriker */}
@@ -168,15 +190,17 @@ export default function Purchases() {
         </div>
       )}
 
-      <Modal open={!!editing} onClose={() => setEditing(null)} title={editing === 'new' ? 'Nytt inköp' : 'Redigera inköp'} wide>
+      <Modal open={!!editing} onClose={closeForm} title={editing === 'new' ? 'Nytt inköp' : 'Redigera inköp'} wide persistent>
         {editing && (
           <PurchaseForm
             key={editing === 'new' ? 'new' : editing.id}
             purchase={editing === 'new' ? null : editing}
             items={editing === 'new' ? [] : byPurchase.get(editing.id) ?? []}
-            onDone={(saved) => {
-              setEditing(null)
-              if (saved) notify(editing === 'new' ? 'Inköpet är sparat' : 'Ändringarna är sparade')
+            state={form}
+            onCancel={closeForm}
+            onSaved={(alive) => {
+              if (alive) setEditing(null)
+              notify(editing === 'new' ? 'Inköpet är sparat' : 'Ändringarna är sparade')
             }}
           />
         )}
@@ -194,7 +218,7 @@ function PurchaseDetails({ purchase: p, rows, actions }: { purchase: Purchase; r
         {p.store_url && (
           <Info label="Webbplats">
             {site ? (
-              <a href={site} target="_blank" rel="noopener noreferrer" className="break-all text-ink underline decoration-ink/30 underline-offset-4 hover:decoration-ink">
+              <a href={site} target="_blank" rel="noopener noreferrer" className="-my-2.5 inline-block min-w-11 max-w-full py-2.5 break-all text-ink underline decoration-ink/30 underline-offset-4 hover:decoration-ink">
                 {p.store_url.replace(/^https?:\/\//, '')}
               </a>
             ) : (
@@ -209,7 +233,7 @@ function PurchaseDetails({ purchase: p, rows, actions }: { purchase: Purchase; r
             {p.contact_phone && (
               <>
                 <span className="select-all tabular-nums">{p.contact_phone}</span>{' '}
-                <a href={`tel:${p.contact_phone.replace(/[^\d+]/g, '')}`} className="text-ink underline decoration-ink/30 underline-offset-4 hover:decoration-ink">
+                <a href={`tel:${p.contact_phone.replace(/[^\d+]/g, '')}`} className="-my-2.5 inline-block min-w-11 py-2.5 text-ink underline decoration-ink/30 underline-offset-4 hover:decoration-ink">
                   Ring
                 </a>
               </>
@@ -238,7 +262,7 @@ function PurchaseDetails({ purchase: p, rows, actions }: { purchase: Purchase; r
                   <div className="min-w-0">
                     <div className="text-base font-medium text-ink break-words">
                       {link ? (
-                        <a href={link} target="_blank" rel="noopener noreferrer" className="underline decoration-ink/30 underline-offset-4">
+                        <a href={link} target="_blank" rel="noopener noreferrer" className="-my-2.5 inline-block min-w-11 py-2.5 underline decoration-ink/30 underline-offset-4">
                           {i.name}
                         </a>
                       ) : (
@@ -279,7 +303,7 @@ function PurchaseDetails({ purchase: p, rows, actions }: { purchase: Purchase; r
                     <tr key={i.id}>
                       <td className="py-2 pe-3">
                         {link ? (
-                          <a href={link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-ink underline decoration-ink/30 underline-offset-4 hover:decoration-ink">
+                          <a href={link} target="_blank" rel="noopener noreferrer" className="-my-2.5 inline-flex min-w-11 items-center gap-1 py-2.5 text-ink underline decoration-ink/30 underline-offset-4 hover:decoration-ink">
                             {i.name} <ExternalLink className="size-3.5" aria-label="(öppnas i ny flik)" />
                           </a>
                         ) : (
@@ -408,6 +432,8 @@ const amountStr = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(Ma
 const n = (v: string) => (v.trim() ? v.trim() : null)
 
 type Errors = Record<string, string>
+/** Formulärets läge, så att sidan kan fråga innan osparat slängs. */
+type FormState = { dirty: boolean; busy: boolean }
 
 function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -421,7 +447,20 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
   )
 }
 
-function PurchaseForm({ purchase, items, onDone }: { purchase: Purchase | null; items: PurchaseItem[]; onDone: (saved: boolean) => void }) {
+function PurchaseForm({
+  purchase,
+  items,
+  state,
+  onSaved,
+  onCancel,
+}: {
+  purchase: Purchase | null
+  items: PurchaseItem[]
+  state: React.MutableRefObject<FormState>
+  /** `alive` är falskt om rutan stängdes medan inköpet sparades. */
+  onSaved: (alive: boolean) => void
+  onCancel: () => void
+}) {
   const auth = useAuth()
   const author = useAuthorFields()
   const uid = useId()
@@ -463,6 +502,22 @@ function PurchaseForm({ purchase, items, onDone }: { purchase: Purchase | null; 
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [errors, setErrors] = useState<Errors>({})
+  // Webbplats, kontaktperson och rabatt på hela köpet ligger hopfällda – öppna om något redan är ifyllt
+  const moreRef = useRef<HTMLDetailsElement>(null)
+  const [moreOpen, setMoreOpen] = useState(() => [f.store_url, f.contact_name, f.contact_phone, f.discount_total, f.discount_note].some((v) => v.trim()))
+  const [initial] = useState(() => JSON.stringify({ f, rows }))
+  const dirty = !!receipt || JSON.stringify({ f, rows }) !== initial
+  useEffect(() => {
+    state.current = { dirty, busy }
+  }, [state, dirty, busy])
+  // Stängs rutan medan inköpet sparas fortsätter sparandet – då visas resultatet som ett meddelande
+  const alive = useRef(true)
+  useEffect(() => {
+    alive.current = true
+    return () => {
+      alive.current = false
+    }
+  }, [])
 
   const clearErr = (k: string) => {
     if (!errors[k]) return
@@ -516,6 +571,11 @@ function PurchaseForm({ purchase, items, onDone }: { purchase: Purchase | null; 
     const found = validate()
     setErrors(found)
     if (Object.keys(found).length) {
+      // Fel i de hopfällda fälten: fäll ut dem först, annars går det inte att se eller fokusera fältet
+      if ((found.store_url || found.discount_total) && moreRef.current) {
+        moreRef.current.open = true
+        setMoreOpen(true)
+      }
       // Fokus till det första felet uppifrån på sidan, oavsett i vilken ordning felen hittades
       const first = Object.keys(found)
         .map((k) => document.getElementById(fid(k)))
@@ -582,9 +642,11 @@ function PurchaseForm({ purchase, items, onDone }: { purchase: Purchase | null; 
       const t0 = Math.max(Date.now(), ...items.map((i) => (Date.parse(i.created_at ?? '') || 0) + 1))
       const fresh = valid.filter((r) => !r.id).map((r, k) => ({ ...toItem(r), status: 'in_stock' as const, created_at: new Date(t0 + k).toISOString() }))
       if (fresh.length) await api.insertMany('purchase_items', fresh)
-      onDone(true)
+      onSaved(alive.current)
     } catch (e) {
-      setErr((e as Error).message)
+      const msg = (e as Error).message
+      if (alive.current) setErr(msg)
+      else notify(`Inköpet från ${f.store_name.trim()} kunde inte sparas: ${msg}`, 'error')
     } finally {
       setBusy(false)
     }
@@ -632,22 +694,9 @@ function PurchaseForm({ purchase, items, onDone }: { purchase: Purchase | null; 
             </Select>
           </Question>
         </div>
-        <div className="grid items-end gap-6 sm:grid-cols-2">
-          <Question label="Adress eller ort">
-            <Input value={f.store_address} onChange={set('store_address')} />
-          </Question>
-          <Question label="Butikens webbplats" hint="Till exempel ica.se" error={errors.store_url}>
-            <Input id={fid('store_url')} type="url" inputMode="url" value={f.store_url} onChange={set('store_url')} aria-invalid={!!errors.store_url} autoCapitalize="off" />
-          </Question>
-        </div>
-        <div className="grid items-end gap-6 sm:grid-cols-2">
-          <Question label="Kontaktperson i butiken" hint="Namn och roll, om någon hjälpte till.">
-            <Input value={f.contact_name} onChange={set('contact_name')} />
-          </Question>
-          <Question label="Kontaktpersonens telefon">
-            <Input type="tel" inputMode="tel" value={f.contact_phone} onChange={set('contact_phone')} />
-          </Question>
-        </div>
+        <Question label="Adress eller ort (valfritt)">
+          <Input value={f.store_address} onChange={set('store_address')} className="sm:max-w-md" />
+        </Question>
       </Section>
 
       <Section title="Produkter" hint="En rad per sorts vara. Allt hamnar i inventarielistan.">
@@ -667,7 +716,7 @@ function PurchaseForm({ purchase, items, onDone }: { purchase: Purchase | null; 
                 <Question label="Vad är det?" error={e('name')}>
                   <Input id={fid(`${i}.name`)} value={r.name} onChange={(ev) => setRow(i, 'name', ev.target.value)} aria-invalid={!!e('name')} autoComplete="off" />
                 </Question>
-                <Question label="Märke">
+                <Question label="Märke (valfritt)">
                   <Input value={r.brand} onChange={(ev) => setRow(i, 'brand', ev.target.value)} autoComplete="off" />
                 </Question>
                 <div className="grid items-end gap-4 sm:grid-cols-2">
@@ -679,22 +728,22 @@ function PurchaseForm({ purchase, items, onDone }: { purchase: Purchase | null; 
                   </Question>
                 </div>
                 <div className="grid items-end gap-4 sm:grid-cols-2">
-                  <Question label="Pris per enhet (kr)" error={e('unit_price')}>
+                  <Question label="Pris per enhet i kronor (valfritt)" error={e('unit_price')}>
                     <Input id={fid(`${i}.unit_price`)} inputMode="decimal" value={r.unit_price} onChange={(ev) => setRow(i, 'unit_price', ev.target.value)} aria-invalid={!!e('unit_price')} />
                   </Question>
-                  <Question label="Rabatt (kr)" error={e('discount')}>
+                  <Question label="Rabatt i kronor (valfritt)" error={e('discount')}>
                     <Input id={fid(`${i}.discount`)} inputMode="decimal" value={r.discount} onChange={(ev) => setRow(i, 'discount', ev.target.value)} aria-invalid={!!e('discount')} />
                   </Question>
                 </div>
                 <div className="grid items-end gap-5 sm:grid-cols-2">
-                  <Question label="Kategori">
+                  <Question label="Kategori (valfritt)">
                     <Input list="vk-categories" value={r.category} onChange={(ev) => setRow(i, 'category', ev.target.value)} />
                   </Question>
-                  <Question label="Var förvaras den?">
+                  <Question label="Var förvaras den? (valfritt)">
                     <Input value={r.storage_location} onChange={(ev) => setRow(i, 'storage_location', ev.target.value)} />
                   </Question>
                 </div>
-                <Question label="Länk till produkten">
+                <Question label="Länk till produkten (valfritt)">
                   <Input type="url" inputMode="url" value={r.link} onChange={(ev) => setRow(i, 'link', ev.target.value)} autoCapitalize="off" />
                 </Question>
                 <p className="text-base text-muted">
@@ -709,24 +758,13 @@ function PurchaseForm({ purchase, items, onDone }: { purchase: Purchase | null; 
         </Button>
       </Section>
 
-      <Section title="Rabatt och betalning">
-        <div className="grid items-end gap-6 sm:grid-cols-2">
-          <Question label="Rabatt på hela köpet (kr)" hint="Utöver rabatterna på produkterna." error={errors.discount_total}>
-            <Input id={fid('discount_total')} inputMode="decimal" value={f.discount_total} onChange={set('discount_total')} aria-invalid={!!errors.discount_total} />
-          </Question>
-          <Question label="Om rabatten" hint="Till exempel föreningsrabatt 10 %, kampanj, vem som ordnade den.">
-            <Input value={f.discount_note} onChange={set('discount_note')} />
-          </Question>
-        </div>
-        <Question label="Betalt av" hint="Föreningens kort, faktura – eller namn vid utlägg.">
+      <Section title="Betalning och kvitto">
+        <Question label="Betalt av (valfritt)" hint="Föreningens kort, faktura – eller namn vid utlägg.">
           <Input list="vk-paid-by" value={f.paid_by} onChange={set('paid_by')} className="sm:max-w-sm" />
         </Question>
-      </Section>
-
-      <Section title="Kvitto">
         <div>
-          <p className="text-base font-medium text-ink">Foto eller PDF av kvittot</p>
-          <p className="mt-0.5 text-sm text-muted">Högst 20 MB.</p>
+          <p className="text-base font-medium text-ink">Foto eller PDF av kvittot (valfritt)</p>
+          <p className="mt-0.5 text-base text-muted">Högst 20 MB.</p>
           {errors.receipt && <p className="mt-1 text-base font-medium text-rose-700">{errors.receipt}</p>}
           <input
             ref={fileRef}
@@ -745,10 +783,37 @@ function PurchaseForm({ purchase, items, onDone }: { purchase: Purchase | null; 
             {receiptName && <span className="min-w-0 truncate text-base text-muted">{receiptName}</span>}
           </div>
         </div>
-        <Question label="Övrigt om inköpet">
+        <Question label="Övrigt om inköpet (valfritt)">
           <Textarea rows={2} value={f.notes} onChange={set('notes')} />
         </Question>
       </Section>
+
+      <details ref={moreRef} open={moreOpen} onToggle={(e) => setMoreOpen(e.currentTarget.open)} className="group border-t border-line pt-4">
+        <summary className="flex min-h-11 w-fit cursor-pointer list-none items-center gap-2 text-lg font-semibold text-ink [&::-webkit-details-marker]:hidden">
+          <ChevronDown className="size-5 transition-transform group-open:rotate-180" aria-hidden /> Fler uppgifter om butiken och rabatt
+        </summary>
+        <div className="space-y-6 pt-4">
+          <Question label="Butikens webbplats (valfritt)" hint="Till exempel ica.se" error={errors.store_url}>
+            <Input id={fid('store_url')} type="url" inputMode="url" value={f.store_url} onChange={set('store_url')} aria-invalid={!!errors.store_url} autoCapitalize="off" className="sm:max-w-md" />
+          </Question>
+          <div className="grid items-end gap-6 sm:grid-cols-2">
+            <Question label="Kontaktperson i butiken (valfritt)" hint="Namn och roll, om någon hjälpte till.">
+              <Input value={f.contact_name} onChange={set('contact_name')} />
+            </Question>
+            <Question label="Kontaktpersonens telefon (valfritt)">
+              <Input type="tel" inputMode="tel" value={f.contact_phone} onChange={set('contact_phone')} />
+            </Question>
+          </div>
+          <div className="grid items-end gap-6 sm:grid-cols-2">
+            <Question label="Rabatt på hela köpet i kronor (valfritt)" hint="Utöver rabatterna på produkterna." error={errors.discount_total}>
+              <Input id={fid('discount_total')} inputMode="decimal" value={f.discount_total} onChange={set('discount_total')} aria-invalid={!!errors.discount_total} />
+            </Question>
+            <Question label="Om rabatten (valfritt)" hint="Till exempel föreningsrabatt 10 %, kampanj, vem som ordnade den.">
+              <Input value={f.discount_note} onChange={set('discount_note')} />
+            </Question>
+          </div>
+        </div>
+      </details>
 
       <section aria-label="Summering" className="rounded-2xl bg-ice px-4 py-4 sm:px-5">
         <dl className="space-y-1 text-base">
@@ -773,8 +838,8 @@ function PurchaseForm({ purchase, items, onDone }: { purchase: Purchase | null; 
 
       <ErrorText>{err}</ErrorText>
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <Button type="button" variant="ghost" onClick={() => onDone(false)}>
-          Avbryt
+        <Button type="button" variant="ghost" onClick={onCancel}>
+          {busy ? 'Stäng' : 'Avbryt'}
         </Button>
         <Button type="submit" loading={busy}>
           Spara inköp

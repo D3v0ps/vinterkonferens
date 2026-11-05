@@ -4,7 +4,7 @@ import { api } from '../../lib/api'
 import { useAuth, useAuthorFields } from '../../lib/auth'
 import { tr } from '../../lib/format'
 import { useList } from '../../lib/hooks'
-import { formatDateTime } from '../../lib/time'
+import { formatShortDate, localTime } from '../../lib/time'
 import type { Localized, Post, PostAudience, PostPage } from '../../lib/types'
 import { confirmDialog, notify } from '../../components/dialogs'
 import { Badge, Button, Checkbox, Empty, ErrorText, Field, LocalizedInput, Modal, PageHeader, Select, Spinner, Tabs } from '../../components/ui'
@@ -71,6 +71,29 @@ export function PostEditor({
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((x) => ({ ...x, [k]: v }))
   const langs = d.audience === 'external' ? (['sv', 'en', 'ar'] as const) : (['sv'] as const)
 
+  async function remove() {
+    if (!d.id) return
+    const title = d.title.sv?.trim()
+    const ok = await confirmDialog({
+      title: 'Ta bort inlägget?',
+      message: `${title ? `"${title}"` : 'Inlägget'} tas bort för alla${d.audience === 'external' ? ', även på besökarsidan' : ''}. Det går inte att ångra.`,
+      confirmLabel: 'Ta bort',
+      danger: true,
+    })
+    if (!ok) return
+    setBusy(true)
+    setErr(null)
+    try {
+      await api.remove('posts', d.id)
+      notify('Inlägget är borttaget')
+      onClose()
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function save() {
     if (!d.title.sv?.trim()) return setErr('Skriv åtminstone en rubrik på svenska.')
     if (!auth.isAdmin && !d.committee_id) return setErr('Välj en kommitté.')
@@ -106,7 +129,7 @@ export function PostEditor({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={d.id ? 'Redigera inlägg' : 'Nytt inlägg'} wide>
+    <Modal open={open} onClose={onClose} title={d.id ? 'Redigera inlägg' : 'Nytt inlägg'} wide persistent>
       <div className="space-y-4">
         {/* På smala skärmar får flikarna halva bredden var och bryts efter "Internt"/"Externt" */}
         <Tabs
@@ -141,21 +164,28 @@ export function PostEditor({
             </Field>
           )}
         </div>
-        <LocalizedInput key={`t-${d.audience}`} label="Rubrik" required langs={[...langs]} value={d.title} onChange={(v) => set('title', v)} />
-        <LocalizedInput key={`b-${d.audience}`} label="Text" multiline langs={[...langs]} value={d.body} onChange={(v) => set('body', v)} />
+        <LocalizedInput key={`t-${d.audience}`} label="Rubrik" langs={[...langs]} value={d.title} onChange={(v) => set('title', v)} />
+        <LocalizedInput key={`b-${d.audience}`} label="Text (valfritt)" multiline langs={[...langs]} value={d.body} onChange={(v) => set('body', v)} />
         {d.audience === 'external' && <p className="text-sm text-muted">Språk du lämnar tomma visas på svenska för besökaren.</p>}
         <div className="flex flex-wrap gap-5">
           <Checkbox label="Fäst högst upp" checked={d.pinned} onChange={(v) => set('pinned', v)} />
           <Checkbox label="Publicerad" checked={d.published} onChange={(v) => set('published', v)} />
         </div>
         <ErrorText>{err}</ErrorText>
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>
-            Avbryt
-          </Button>
-          <Button onClick={save} loading={busy}>
-            Spara inlägg
-          </Button>
+        <div className="flex flex-wrap items-center gap-2 border-t border-line pt-4">
+          {d.id && (
+            <Button type="button" variant="ghost" className="text-rose-700" disabled={busy} onClick={remove}>
+              <Trash2 className="size-4" aria-hidden /> Ta bort
+            </Button>
+          )}
+          <div className="ms-auto flex gap-2">
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Avbryt
+            </Button>
+            <Button type="button" onClick={save} loading={busy}>
+              Spara inlägg
+            </Button>
+          </div>
         </div>
       </div>
     </Modal>
@@ -170,6 +200,9 @@ function AudienceLabel({ kind, who }: { kind: string; who: string }) {
   )
 }
 
+/** "5 nov kl 14:35" */
+const stamp = (iso: string) => `${formatShortDate(iso)} kl ${localTime(iso)}`
+
 /** Ett inlägg som rad. Lägg raderna i en <div className="divide-y divide-line border-y border-line">. */
 export function PostCard({ post, onEdit }: { post: Post; onEdit?: (p: Post) => void }) {
   const auth = useAuth()
@@ -183,19 +216,8 @@ export function PostCard({ post, onEdit }: { post: Post; onEdit?: (p: Post) => v
     committee?.name,
     // Externa inlägg har kommitténs namn som avsändare; visa det bara en gång
     post.author_name !== committee?.name && post.author_name,
-    formatDateTime(post.updated_at ?? post.created_at),
+    stamp(post.updated_at ?? post.created_at),
   ].filter(Boolean)
-
-  async function remove() {
-    const ok = await confirmDialog({ title: 'Ta bort inlägget?', message: `"${title}" tas bort för alla.`, confirmLabel: 'Ta bort', danger: true })
-    if (!ok) return
-    try {
-      await api.remove('posts', post.id)
-      notify('Inlägget är borttaget')
-    } catch (e) {
-      notify((e as Error).message, 'error')
-    }
-  }
 
   return (
     <article className="flex items-start gap-3 py-5">
@@ -209,14 +231,15 @@ export function PostCard({ post, onEdit }: { post: Post; onEdit?: (p: Post) => v
         <p className="mt-2 text-sm text-muted">{meta.join(' · ')}</p>
       </div>
       {canEdit && onEdit && (
-        <div className="no-print -me-2 flex shrink-0">
-          <button className="grid size-11 place-items-center rounded-xl text-muted hover:bg-slate-100 hover:text-ink" aria-label={`Redigera ${title}`} title="Redigera" onClick={() => onEdit(post)}>
-            <Pencil className="size-4" />
-          </button>
-          <button className="grid size-11 place-items-center rounded-xl text-rose-700 hover:bg-rose-50" aria-label={`Ta bort ${title}`} title="Ta bort" onClick={remove}>
-            <Trash2 className="size-4" />
-          </button>
-        </div>
+        <button
+          type="button"
+          className="no-print -me-2 grid size-11 shrink-0 place-items-center rounded-xl text-muted hover:bg-slate-100 hover:text-ink"
+          aria-label={`Redigera ${title}`}
+          title="Redigera"
+          onClick={() => onEdit(post)}
+        >
+          <Pencil className="size-4" aria-hidden />
+        </button>
       )}
     </article>
   )
@@ -236,11 +259,7 @@ export default function Posts() {
   return (
     <div>
       <PageHeader
-        title={
-          <>
-            Info & <em className="font-display font-normal italic">anslag</em>
-          </>
-        }
+        title="Info & anslag"
         subtitle="Interna meddelanden till volontärer och extern information som visas för besökarna."
         actions={
           canCreate && (

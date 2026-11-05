@@ -1,13 +1,14 @@
 import { useId, useRef, useState, type ReactNode } from 'react'
 import { CheckCircle2, Plus, Ticket, Trash2 } from 'lucide-react'
 import { Agenda, DayTabs, PageTitle, PostsList, useDaySessions, useSelectedDay } from '../../components/Agenda'
-import { Button, Checkbox, ErrorText, Input, Modal, Spinner, Textarea, cx } from '../../components/ui'
+import { FormModal } from '../../components/FeedbackDialog'
+import { Button, Checkbox, ErrorText, Input, Spinner, Textarea, cx } from '../../components/ui'
 import { api } from '../../lib/api'
 import { useConference } from '../../lib/conference'
 import { tr } from '../../lib/format'
 import { useLocalStorage } from '../../lib/hooks'
 import { Tr, errorText, useI18n } from '../../lib/i18n'
-import { formatDay, weekdayShort } from '../../lib/time'
+import { formatShortDay } from '../../lib/time'
 import type { Child } from '../../lib/types'
 
 const AUD = ['kids', 'all'] as const
@@ -21,68 +22,95 @@ interface SavedReg {
 
 export default function Kids() {
   const { t, lang } = useI18n()
-  const { settings } = useConference()
+  const { settings, isConferenceDay, today } = useConference()
   const { days, date, setDate } = useSelectedDay()
   const { sessions, loading } = useDaySessions(date, [...AUD])
   const [open, setOpen] = useState(false)
   const [mine, setMine] = useLocalStorage<SavedReg[]>('vk-my-regs', [])
   const price = tr(settings.fritids_price, lang)
+  // När alla dagar har varit finns inget kvar att anmäla till: då försvinner inbjudan, och hela
+  // fritidsdelen om det inte finns egna anmälningar att visa.
+  const canRegister = !days.length || days.some((d) => d.date >= today)
+  const showFritids = canRegister || mine.length > 0
+  const fritidsFirst = !isConferenceDay && showFritids
+
+  const fritids = showFritids && (
+    <section key="fritids" className={cx(!fritidsFirst && 'mt-14')} aria-labelledby="fritids-title">
+      <h2 id="fritids-title" className="text-2xl font-semibold text-ink">
+        {t.fritids}
+      </h2>
+      {canRegister && (
+        <>
+          <p className="mt-2 max-w-[60ch] text-base">{tr(settings.fritids_info, lang) ? <Tr value={settings.fritids_info} /> : t.registerLead}</p>
+          {price && (
+            <p className="mt-1 text-base font-medium text-ink">
+              <Tr value={settings.fritids_price} />
+            </p>
+          )}
+        </>
+      )}
+
+      {mine.length > 0 && (
+        <div className={canRegister ? 'mt-6' : 'mt-3'}>
+          <h3 className="text-lg font-semibold text-ink">{t.myRegistrations}</h3>
+          <ul className="mt-2 space-y-2">
+            {mine.map((r) => (
+              <li key={r.number} className="flex items-center gap-4 rounded-2xl border border-line bg-white px-4 py-3">
+                <span className="shrink-0 text-3xl font-semibold tabular-nums text-ink" dir="ltr">
+                  #{r.number}
+                </span>
+                <span className="min-w-0">
+                  <span className="block font-medium text-ink">{r.children.join(t.listSep)}</span>
+                  <span className="block text-base text-muted first-letter:uppercase">{r.days.map((d) => formatShortDay(d, lang)).join(t.listSep)}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+          {canRegister && <p className="mt-2 text-base text-muted">{t.regDoneInfo}</p>}
+        </div>
+      )}
+
+      {canRegister && (
+        <Button variant="accent" size="lg" className="mt-6 w-full sm:w-auto" onClick={() => setOpen(true)}>
+          <Ticket className="size-5" aria-hidden /> {mine.length ? t.newRegistration : t.register}
+        </Button>
+      )}
+    </section>
+  )
+
+  // Barnens aktiviteter. Dagvalet visar redan datumet; bara en ensam dag får en egen datumrad.
+  const activities = (
+    <section key="activities" className={cx(fritidsFirst && 'mt-14')} aria-labelledby="kids-activities-title">
+      {/* Kommer aktiviteterna först säger sidrubriken redan vad det är */}
+      <h2 id="kids-activities-title" className={cx('text-2xl font-semibold text-ink', days.length > 1 && 'mb-4', !fritidsFirst && 'sr-only')}>
+        {t.kidsActivities}
+      </h2>
+      {date && days.length < 2 && <p className="mt-1 mb-4 text-base text-muted first-letter:uppercase">{formatShortDay(date, lang)}</p>}
+      <DayTabs days={days} value={date} onChange={setDate} />
+      {loading ? <Spinner /> : <Agenda sessions={sessions} showFeedback={false} />}
+    </section>
+  )
 
   return (
     <>
       <PageTitle title={t.kids} lead={t.kidsLead} />
+      {!fritidsFirst && canRegister && (
+        <button
+          type="button"
+          className="-mt-2 mb-6 inline-flex min-h-11 items-center gap-1.5 text-base font-medium text-ink underline underline-offset-4"
+          onClick={() => document.getElementById('fritids-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+        >
+          {t.register} <span aria-hidden>↓</span>
+        </button>
+      )}
       <PostsList page="kids" />
+      {/* Under konferensdagarna är det viktigaste vad barnen gör just nu, så aktiviteterna kommer först. */}
+      {fritidsFirst ? [fritids, activities] : [activities, fritids]}
 
-      {/* Fritids: förregistrering */}
-      <section aria-labelledby="fritids-title">
-        <h2 id="fritids-title" className="text-2xl font-semibold text-ink">
-          {t.fritids}
-        </h2>
-        <p className="mt-2 max-w-[60ch] text-base">{tr(settings.fritids_info, lang) ? <Tr value={settings.fritids_info} /> : t.registerLead}</p>
-        {price && (
-          <p className="mt-1 text-base font-medium text-ink">
-            <Tr value={settings.fritids_price} />
-          </p>
-        )}
-
-        {mine.length > 0 && (
-          <div className="mt-6">
-            <h3 className="text-lg font-semibold text-ink">{t.myRegistrations}</h3>
-            <ul className="mt-2 space-y-2">
-              {mine.map((r) => (
-                <li key={r.number} className="flex items-center gap-4 rounded-2xl border border-line bg-white px-4 py-3">
-                  <span className="shrink-0 text-3xl font-semibold tabular-nums text-ink" dir="ltr">
-                    #{r.number}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block font-medium text-ink">{r.children.join(t.listSep)}</span>
-                    <span className="block text-base text-muted first-letter:uppercase">{r.days.map((d) => weekdayShort(d, lang)).join(t.listSep)}</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <p className="mt-2 text-base text-muted">{t.regDoneInfo}</p>
-          </div>
-        )}
-
-        <Button variant="accent" size="lg" className="mt-6 w-full sm:w-auto" onClick={() => setOpen(true)}>
-          <Ticket className="size-5" aria-hidden /> {mine.length ? t.newRegistration : t.register}
-        </Button>
-      </section>
-
-      {/* Barnens aktiviteter */}
-      <section className="mt-12 border-t border-line pt-8" aria-labelledby="kids-activities-title">
-        <h2 id="kids-activities-title" className="text-2xl font-semibold text-ink">
-          {t.kidsActivities}
-        </h2>
-        {date && <p className="mt-1 mb-4 text-base text-muted first-letter:uppercase">{formatDay(date, lang)}</p>}
-        <DayTabs days={days} value={date} onChange={setDate} />
-        {loading ? <Spinner /> : <Agenda sessions={sessions} showFeedback={false} />}
-      </section>
-
-      <Modal open={open} onClose={() => setOpen(false)} title={t.register}>
+      {/* FormModal: Esc ska inte tömma ett halvifyllt formulär */}
+      <FormModal open={open} onClose={() => setOpen(false)} title={t.register}>
         <RegistrationForm onDone={(r) => setMine([r, ...mine])} onClose={() => setOpen(false)} />
-      </Modal>
+      </FormModal>
     </>
   )
 }
@@ -140,9 +168,11 @@ function RegistrationForm({ onDone, onClose }: { onDone: (r: SavedReg) => void; 
   const [guardian_phone, setPhone] = useState('')
   const [guardian_email, setEmail] = useState('')
   const [children, setChildren] = useState<Child[]>([{ name: '', age: null, allergies: '' }])
-  // Härlett standardval: kommande dagar, även om dagarna laddas in efter att formuläret öppnats.
+  // Dagar som redan varit går inte att välja.
+  const openDays = days.filter((d) => d.date >= today)
+  // Härlett standardval: alla kommande dagar, även om dagarna laddas in efter att formuläret öppnats.
   const [sel, setPicked] = useState<string[] | null>(null)
-  const picked = sel ?? days.filter((d) => d.date >= today).map((d) => d.date)
+  const picked = (sel ?? openDays.map((d) => d.date)).filter((x) => openDays.some((d) => d.date === x))
   const [pickup_names, setPickup] = useState('')
   const [notes, setNotes] = useState('')
   const [photo_consent, setConsent] = useState(false)
@@ -237,7 +267,6 @@ function RegistrationForm({ onDone, onClose }: { onDone: (r: SavedReg) => void; 
 
   return (
     <form onSubmit={submit} noValidate className="space-y-7">
-      <p className="text-base text-muted">{t.registerLead}</p>
 
       {errorList.length > 0 && (
         <div ref={summaryRef} tabIndex={-1} role="alert" aria-labelledby={`${uid}-summary`} className="rounded-xl border-2 border-rose-700 p-4 focus:outline-none">
@@ -367,7 +396,7 @@ function RegistrationForm({ onDone, onClose }: { onDone: (r: SavedReg) => void; 
         </Button>
       </div>
 
-      {days.length > 0 && (
+      {openDays.length > 0 && (
         <div className="border-t border-line pt-6">
           {/* Felmarkeringen ligger på en egen div: en fieldsets kantlinje ritas i höjd med legendens mitt. */}
           <div className={cx(errors[ids.days] && 'border-s-4 border-s-rose-700 ps-3')}>
@@ -387,12 +416,12 @@ function RegistrationForm({ onDone, onClose }: { onDone: (r: SavedReg) => void; 
                 </p>
               )}
               <div className="mt-2 flex flex-col">
-                {days.map((d) => (
+                {openDays.map((d) => (
                   <Checkbox
                     key={d.id}
                     label={
                       <span className="inline-block first-letter:uppercase">
-                        {formatDay(d.date, lang)}
+                        {formatShortDay(d.date, lang)}
                         {tr(d.label, lang) && (
                           <span className="text-muted">
                             {' '}
@@ -413,7 +442,7 @@ function RegistrationForm({ onDone, onClose }: { onDone: (r: SavedReg) => void; 
           </div>
         </div>
       )}
-      {days.length === 0 && errors[ids.days] && <ErrorText>{errors[ids.days]}</ErrorText>}
+      {openDays.length === 0 && errors[ids.days] && <ErrorText>{errors[ids.days]}</ErrorText>}
 
       <div className="space-y-5 border-t border-line pt-6">
         <FormField id={`${uid}-pickup`} label={t.pickup}>

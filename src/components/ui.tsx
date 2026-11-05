@@ -59,8 +59,8 @@ export function Field({ label, hint, children, required, className }: { label: s
         {label}
         {required && <span className="text-rose-700"> *</span>}
       </span>
+      {hint && <span className="-mt-0.5 mb-1.5 block text-base text-muted">{hint}</span>}
       {children}
-      {hint && <span className="mt-1.5 block text-sm text-muted">{hint}</span>}
     </label>
   )
 }
@@ -234,7 +234,9 @@ export function LocalizedInput({
   multiline,
   langs = ['sv', 'en', 'ar'],
   required,
+  hint,
 }: {
+  hint?: ReactNode
   label: string
   value: Localized
   onChange: (v: Localized) => void
@@ -272,6 +274,7 @@ export function LocalizedInput({
           </div>
         )}
       </div>
+      {hint && <span className="mb-1.5 block text-base text-muted">{hint}</span>}
       <C
         key={active}
         dir={active === 'ar' ? 'rtl' : 'ltr'}
@@ -289,7 +292,7 @@ export function LocalizedInput({
 export function StatTile({ label, value, sub }: { label: string; value: ReactNode; sub?: ReactNode }) {
   return (
     <Card className="p-4">
-      <div className="text-sm text-muted">{label}</div>
+      <div className="text-base text-muted">{label}</div>
       <div className="mt-1 text-3xl font-semibold text-ink tabular-nums">{value}</div>
       {sub && <div className="mt-0.5 text-sm text-muted">{sub}</div>}
     </Card>

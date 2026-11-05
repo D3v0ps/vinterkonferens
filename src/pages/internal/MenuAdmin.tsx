@@ -42,20 +42,63 @@ function priceText(n: number | null | undefined): string {
 }
 
 // ---------------------------------------------------------------- Exempelmeny
-// Några rätter så att köket kan se hur menyn och Finns/Slut ser ut för besökarna.
-// Allt börjar med "Exempel:" och tas bort med en knapp.
+// Några rätter så att köket kan se hur menyn och "Slut" ser ut för besökarna. Namnen börjar med
+// "Exempel:" så att de känns igen och tas bort med en knapp. Beskrivningarna är vanlig besökartext.
 
 const EXAMPLE_PREFIX = 'Exempel:'
 const isExample = (it: MenuItem) => (it.name?.sv ?? '').trim().startsWith(EXAMPLE_PREFIX)
-const EXAMPLE_NOTE = { sv: 'Exempelrätt – ändra eller ta bort.', en: 'Example item – edit or delete.', ar: 'عنصر تجريبي – عدّله أو احذفه.' }
 
-const EXAMPLE_MENU: Pick<MenuItem, 'name' | 'category' | 'price' | 'tags'>[] = [
-  { name: { sv: 'Exempel: Linsgryta med ris', en: 'Example: Lentil stew with rice', ar: 'مثال: يخنة العدس مع الأرز' }, category: 'food', price: 60, tags: ['vegan', 'glutenfree', 'halal'] },
-  { name: { sv: 'Exempel: Kycklingwrap', en: 'Example: Chicken wrap', ar: 'مثال: لفافة دجاج' }, category: 'food', price: 55, tags: ['halal'] },
-  { name: { sv: 'Exempel: Kaffe', en: 'Example: Coffee', ar: 'مثال: قهوة' }, category: 'coffee', price: 15, tags: ['vegan'] },
-  { name: { sv: 'Exempel: Te', en: 'Example: Tea', ar: 'مثال: شاي' }, category: 'coffee', price: 10, tags: ['vegan'] },
-  { name: { sv: 'Exempel: Saft', en: 'Example: Cordial', ar: 'مثال: عصير' }, category: 'drinks', price: 10, tags: ['vegan'] },
-  { name: { sv: 'Exempel: Kanelbulle', en: 'Example: Cinnamon bun', ar: 'مثال: كعكة القرفة' }, category: 'snacks', price: 20, tags: ['vegetarian'] },
+const EXAMPLE_MENU: Pick<MenuItem, 'name' | 'description' | 'category' | 'price' | 'tags'>[] = [
+  {
+    name: { sv: 'Exempel: Linsgryta med ris', en: 'Example: Lentil stew with rice', ar: 'مثال: يخنة العدس مع الأرز' },
+    description: {
+      sv: 'Mild gryta med röda linser och kokosmjölk, serveras med ris.',
+      en: 'Mild stew with red lentils and coconut milk, served with rice.',
+      ar: 'يخنة خفيفة من العدس الأحمر وحليب جوز الهند، تُقدَّم مع الأرز.',
+    },
+    category: 'food',
+    price: 60,
+    tags: ['vegan', 'glutenfree', 'halal'],
+  },
+  {
+    name: { sv: 'Exempel: Kycklingwrap', en: 'Example: Chicken wrap', ar: 'مثال: لفافة دجاج' },
+    description: {
+      sv: 'Grillad kyckling, sallad och vitlökssås i tunnbröd.',
+      en: 'Grilled chicken, salad and garlic sauce in a flatbread.',
+      ar: 'دجاج مشوي وسلطة وصلصة الثوم في خبز رقيق.',
+    },
+    category: 'food',
+    price: 55,
+    tags: ['halal'],
+  },
+  {
+    name: { sv: 'Exempel: Kaffe', en: 'Example: Coffee', ar: 'مثال: قهوة' },
+    description: { sv: 'Bryggkaffe. Påtår ingår.', en: 'Filter coffee. Refills are free.', ar: 'قهوة مفلترة. إعادة التعبئة مجانية.' },
+    category: 'coffee',
+    price: 15,
+    tags: ['vegan'],
+  },
+  {
+    name: { sv: 'Exempel: Te', en: 'Example: Tea', ar: 'مثال: شاي' },
+    description: { sv: 'Svart te eller myntate.', en: 'Black tea or mint tea.', ar: 'شاي أسود أو شاي بالنعناع.' },
+    category: 'coffee',
+    price: 10,
+    tags: ['vegan'],
+  },
+  {
+    name: { sv: 'Exempel: Saft', en: 'Example: Cordial', ar: 'مثال: عصير' },
+    description: { sv: 'Hallon- eller fläderblomssaft.', en: 'Raspberry or elderflower cordial.', ar: 'عصير التوت أو زهر البيلسان.' },
+    category: 'drinks',
+    price: 10,
+    tags: ['vegan'],
+  },
+  {
+    name: { sv: 'Exempel: Kanelbulle', en: 'Example: Cinnamon bun', ar: 'مثال: كعكة القرفة' },
+    description: { sv: 'Nybakad i vårt eget kök.', en: 'Freshly baked in our own kitchen.', ar: 'مخبوزة طازجة في مطبخنا.' },
+    category: 'snacks',
+    price: 20,
+    tags: ['vegetarian'],
+  },
 ]
 
 export default function MenuAdmin() {
@@ -119,11 +162,15 @@ export default function MenuAdmin() {
     }
   }
 
+  const [busyId, setBusyId] = useState<string | null>(null)
   async function toggle(it: MenuItem) {
+    setBusyId(it.id)
     try {
       await api.update('menu_items', it.id, { available: !it.available })
     } catch (e) {
-      notify((e as Error).message, 'error')
+      notify(`Kunde inte ändra ${tr(it.name, 'sv')}: ${(e as Error).message}`, 'error')
+    } finally {
+      setBusyId(null)
     }
   }
 
@@ -138,7 +185,7 @@ export default function MenuAdmin() {
     try {
       await api.insertMany(
         'menu_items',
-        EXAMPLE_MENU.map((x, i) => ({ ...x, description: EXAMPLE_NOTE, available: true, sort: i })),
+        EXAMPLE_MENU.map((x, i) => ({ ...x, available: true, sort: i })),
       )
       notify('Exempelmenyn är inlagd')
     } catch (e) {
@@ -173,7 +220,7 @@ export default function MenuAdmin() {
     <div>
       <PageHeader
         title="Meny"
-        subtitle="Visas under Köket på besökarsidan. Tryck på Finns eller Slut när något tar slut."
+        subtitle="Visas under Köket på besökarsidan. Bocka i Slut när något tar slut, så syns det direkt för besökarna."
         actions={
           canEdit && (
             <Button onClick={() => open()}>
@@ -223,31 +270,35 @@ export default function MenuAdmin() {
                     const missing = [!it.name.en?.trim() && 'engelska', !it.name.ar?.trim() && 'arabiska'].filter(Boolean)
                     return (
                       <li key={it.id} className="flex items-center gap-3 py-3">
-                        <button
-                          type="button"
-                          disabled={!canEdit}
-                          onClick={() => toggle(it)}
-                          className={cx(
-                            'min-h-11 w-24 shrink-0 rounded-xl border text-base font-semibold transition-colors',
-                            it.available
-                              ? cx('border-emerald-200 bg-emerald-50 text-emerald-800', canEdit && 'hover:bg-emerald-100')
-                              : cx('border-rose-200 bg-rose-50 text-rose-800', canEdit && 'hover:bg-rose-100'),
-                            !canEdit && 'cursor-default',
-                          )}
-                          aria-label={`${name}: ${it.available ? 'finns' : 'slut'}${canEdit ? '. Tryck för att ändra.' : ''}`}
-                        >
-                          {it.available ? 'Finns' : 'Slut'}
-                        </button>
                         <div className="min-w-0 flex-1">
-                          <div className={cx('text-base font-medium', it.available ? 'text-ink' : 'text-muted line-through')}>{name}</div>
-                          <p className="text-sm text-muted">
-                            <span className="font-medium text-ink tabular-nums">{kr(it.price)}</span>
-                            {tags.length > 0 && ` · ${tags.join(', ')}`}
-                          </p>
-                          {missing.length > 0 && <p className="text-sm text-amber-800">Namnet saknas på {missing.join(' och ')}.</p>}
+                          <div className="flex flex-wrap items-baseline gap-x-3">
+                            <span className={cx('text-base font-medium', it.available ? 'text-ink' : 'text-muted line-through')}>{name}</span>
+                            {it.price != null && (
+                              <span className={cx('text-base tabular-nums', it.available ? 'text-ink' : 'text-muted')}>{kr(it.price)}</span>
+                            )}
+                          </div>
+                          {tags.length > 0 && <p className="text-sm text-muted">{tags.join(', ')}</p>}
+                          {missing.length > 0 && <p className="text-sm text-muted">Namnet saknas på {missing.join(' och ')}.</p>}
                         </div>
+                        {canEdit ? (
+                          <label className="flex min-h-11 shrink-0 cursor-pointer items-center gap-2 text-base text-ink">
+                            <input
+                              type="checkbox"
+                              className="size-5 rounded accent-ink"
+                              checked={!it.available}
+                              disabled={busyId === it.id}
+                              onChange={() => toggle(it)}
+                              aria-label={`Markera ${name} som slut`}
+                            />
+                            <span aria-hidden className={it.available ? 'text-muted' : 'font-semibold text-ink'}>
+                              Slut
+                            </span>
+                          </label>
+                        ) : (
+                          !it.available && <span className="shrink-0 text-base font-semibold text-ink">Slut</span>
+                        )}
                         {canEdit && (
-                          <Button variant="ghost" className="shrink-0" onClick={() => open(it)} aria-label={`Redigera ${name}`}>
+                          <Button variant="ghost" className="shrink-0 text-muted hover:text-ink" onClick={() => open(it)} aria-label={`Redigera ${name}`}>
                             <Pencil className="size-4" aria-hidden />
                             <span className="hidden sm:inline">Redigera</span>
                           </Button>
@@ -262,7 +313,7 @@ export default function MenuAdmin() {
         </div>
       )}
 
-      <Modal open={!!form} onClose={() => setForm(null)} title={form?.id ? 'Redigera rätt' : 'Ny rätt'}>
+      <Modal open={!!form} onClose={() => setForm(null)} title={form?.id ? 'Redigera rätt' : 'Ny rätt'} persistent>
         {form && (
           <form
             className="space-y-5"
@@ -272,7 +323,7 @@ export default function MenuAdmin() {
             }}
           >
             <LocalizedInput label="Namn" required value={form.name ?? {}} onChange={(name) => set({ name })} />
-            <LocalizedInput label="Beskrivning" value={form.description ?? {}} onChange={(description) => set({ description })} />
+            <LocalizedInput label="Beskrivning (valfritt)" value={form.description ?? {}} onChange={(description) => set({ description })} />
             <div className="grid gap-4 sm:grid-cols-3">
               <Field label="Kategori">
                 <Select value={form.category} onChange={(e) => set({ category: e.target.value as MenuCategory })}>
@@ -283,15 +334,15 @@ export default function MenuAdmin() {
                   ))}
                 </Select>
               </Field>
-              <Field label="Pris (kr)" hint="T.ex. 25 eller 25,50. Tomt om priset inte ska visas.">
+              <Field label="Pris i kronor (valfritt)" hint="Till exempel 25 eller 25,50. Lämna tomt om inget pris ska visas.">
                 <Input inputMode="decimal" value={form.priceText} onChange={(e) => set({ priceText: e.target.value })} aria-invalid={!!err && err.startsWith('Skriv priset')} />
               </Field>
-              <Field label="Ordning" hint="Lägre tal visas först.">
+              <Field label="Ordning" hint="Lägre tal visas först i sin kategori.">
                 <Input type="number" inputMode="numeric" value={form.sort ?? 0} onChange={(e) => set({ sort: Number(e.target.value) })} />
               </Field>
             </div>
             <fieldset>
-              <legend className="mb-1 block text-base font-medium text-slate-800">Märkning</legend>
+              <legend className="mb-1 block text-base font-medium text-slate-800">Märkning (valfritt)</legend>
               <div className="grid gap-x-4 sm:grid-cols-2">
                 {TAGS.map((t) => (
                   <Checkbox
@@ -303,7 +354,7 @@ export default function MenuAdmin() {
                 ))}
               </div>
             </fieldset>
-            <Checkbox label="Finns att köpa just nu" checked={!!form.available} onChange={(available) => set({ available })} />
+            <Checkbox label="Slut just nu" checked={!form.available} onChange={(out) => set({ available: !out })} />
             <ErrorText>{err}</ErrorText>
             <div className="flex flex-wrap items-center gap-2 border-t border-line pt-4">
               {form.id && (

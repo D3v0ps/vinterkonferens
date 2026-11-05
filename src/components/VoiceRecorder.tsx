@@ -106,7 +106,7 @@ function PhoneRecorder({ onDone, disabled }: Props) {
       <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={() => inputRef.current?.click()} disabled={disabled}>
         <Mic className="size-4" aria-hidden /> Spela in eller välj ljudfil
       </Button>
-      <p className="mt-1.5 text-sm text-muted">På mobilen öppnas telefonens inspelare. Du kan också välja en ljudfil du redan har.</p>
+      <p className="mt-1.5 text-base text-muted">På mobilen öppnas telefonens inspelare. Du kan också välja en ljudfil du redan har.</p>
       {err && (
         <p className="mt-2 text-base text-rose-700" role="alert">
           {err}
@@ -312,7 +312,7 @@ function LiveRecorder({ onDone, disabled }: Props) {
         </p>
       )}
       {msg && (
-        <p className={cx('mt-2', failed ? 'text-base text-rose-700' : 'text-sm text-muted')} role={failed ? 'alert' : undefined}>
+        <p className={cx('mt-2 text-base', failed ? 'text-rose-700' : 'text-muted')} role={failed ? 'alert' : undefined}>
           {msg}
         </p>
       )}

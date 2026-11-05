@@ -2,13 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CalendarPlus, Copy, Pencil, Timer, Trash2 } from 'lucide-react'
 import { confirmDialog, notify } from '../../components/dialogs'
-import { Badge, Button, Checkbox, Empty, ErrorText, Field, Input, LocalizedInput, Modal, PageHeader, Select, Spinner, Tabs } from '../../components/ui'
+import { Button, Checkbox, Empty, ErrorText, Field, Input, LocalizedInput, Modal, PageHeader, Select, Spinner, Tabs } from '../../components/ui'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { useConference } from '../../lib/conference'
 import { tr } from '../../lib/format'
-import { useList } from '../../lib/hooks'
-import { addMinutes, localDate, localTime, weekdayShort, zonedToUtc } from '../../lib/time'
+import { useList, useNow } from '../../lib/hooks'
+import { addMinutes, formatShortDay, localDate, localTime, sessionStatus, zonedToUtc } from '../../lib/time'
 import type { Audience, ConferenceDay, Lang, Localized, Session, SessionKind } from '../../lib/types'
 
 const KIND_LABEL: Record<SessionKind, string> = {
@@ -24,7 +24,8 @@ const LANG_LABEL: Record<Lang, string> = { sv: 'på svenska', en: 'på engelska'
 
 // ---------------------------------------------------------------- Exempelprogram
 // Ett litet program per konferensdag så att ägaren kan se överstrykning, "Nästa" och betyg
-// fungera innan det riktiga programmet finns. Allt börjar med "Exempel:" och tas bort med en knapp.
+// fungera innan det riktiga programmet finns. Titlarna börjar med "Exempel:" så att de känns igen och
+// tas bort med en knapp. Beskrivningarna är skrivna som riktig besökartext, eftersom de syns på besökarsidan.
 
 const EXAMPLE_PREFIX = 'Exempel:'
 const isExample = (s: Session) => (s.title?.sv ?? '').trim().startsWith(EXAMPLE_PREFIX)
@@ -36,14 +37,20 @@ interface ExampleItem {
   audience: Audience
   room: string
   title: Localized
+  description: Localized
   speaker?: string
   capacity?: number
 }
 
 const POETRY: Localized = { sv: 'Exempel: Förprogram – poesi', en: 'Example: Pre-show – poetry', ar: 'مثال: برنامج تمهيدي – شعر' }
+const POETRY_TEXT: Localized = {
+  sv: 'Dikter på svenska och arabiska medan salen fylls. Kom i god tid och hitta en plats.',
+  en: 'Poems in Swedish and Arabic while the hall fills up. Come early and find a seat.',
+  ar: 'قصائد بالسويدية والعربية بينما تمتلئ القاعة. تعال مبكراً واعثر على مقعد.',
+}
 
 const EXAMPLE_DAY: ExampleItem[] = [
-  { start: '09:45', end: '10:00', kind: 'preshow', audience: 'adults', room: 'Stora salen', capacity: 400, title: POETRY },
+  { start: '09:45', end: '10:00', kind: 'preshow', audience: 'adults', room: 'Stora salen', capacity: 400, title: POETRY, description: POETRY_TEXT },
   {
     start: '10:00',
     end: '11:00',
@@ -53,10 +60,35 @@ const EXAMPLE_DAY: ExampleItem[] = [
     capacity: 400,
     speaker: 'Exempeltalare',
     title: { sv: 'Exempel: Föreläsning om gemenskap', en: 'Example: Lecture on community', ar: 'مثال: محاضرة عن المجتمع' },
+    description: {
+      sv: 'Om att höra till, och om vad vi bär med oss när vi möts. Efteråt finns tid för frågor.',
+      en: 'On belonging, and on what we bring with us when we meet. Time for questions afterwards.',
+      ar: 'عن الانتماء، وعمّا نحمله معنا عندما نلتقي. يتبعها وقت للأسئلة.',
+    },
   },
-  { start: '10:00', end: '11:30', kind: 'activity', audience: 'kids', room: 'Fritids', title: { sv: 'Exempel: Pyssel och lek', en: 'Example: Crafts and games', ar: 'مثال: أشغال يدوية وألعاب' } },
-  { start: '12:00', end: '13:00', kind: 'meal', audience: 'all', room: 'Matsalen', title: { sv: 'Exempel: Lunch', en: 'Example: Lunch', ar: 'مثال: غداء' } },
-  { start: '13:15', end: '13:30', kind: 'preshow', audience: 'adults', room: 'Stora salen', capacity: 400, title: POETRY },
+  {
+    start: '10:00',
+    end: '11:30',
+    kind: 'activity',
+    audience: 'kids',
+    room: 'Fritids',
+    title: { sv: 'Exempel: Pyssel och lek', en: 'Example: Crafts and games', ar: 'مثال: أشغال يدوية وألعاب' },
+    description: { sv: 'Pyssel, pärlor och lekar för barnen.', en: 'Crafts, beads and games for the children.', ar: 'أشغال يدوية وخرز وألعاب للأطفال.' },
+  },
+  {
+    start: '12:00',
+    end: '13:00',
+    kind: 'meal',
+    audience: 'all',
+    room: 'Matsalen',
+    title: { sv: 'Exempel: Lunch', en: 'Example: Lunch', ar: 'مثال: غداء' },
+    description: {
+      sv: 'Varm rätt med vegetariskt alternativ. Menyn finns under Köket.',
+      en: 'A hot meal with a vegetarian option. See the menu under Kitchen.',
+      ar: 'وجبة ساخنة مع خيار نباتي. القائمة في قسم المطبخ.',
+    },
+  },
+  { start: '13:15', end: '13:30', kind: 'preshow', audience: 'adults', room: 'Stora salen', capacity: 400, title: POETRY, description: POETRY_TEXT },
   {
     start: '13:30',
     end: '14:30',
@@ -66,15 +98,26 @@ const EXAMPLE_DAY: ExampleItem[] = [
     capacity: 400,
     speaker: 'Exempeltalare',
     title: { sv: 'Exempel: Föreläsning om hopp', en: 'Example: Lecture on hope', ar: 'مثال: محاضرة عن الأمل' },
+    description: {
+      sv: 'Om hopp i svåra tider, med berättelser från deltagarna själva.',
+      en: 'On hope in hard times, with stories from the participants themselves.',
+      ar: 'عن الأمل في الأوقات الصعبة، مع قصص من المشاركين أنفسهم.',
+    },
   },
-  { start: '13:30', end: '15:00', kind: 'activity', audience: 'kids', room: 'Fritids', title: { sv: 'Exempel: Utelek i snön', en: 'Example: Outdoor play in the snow', ar: 'مثال: لعب في الثلج' } },
+  {
+    start: '13:30',
+    end: '15:00',
+    kind: 'activity',
+    audience: 'kids',
+    room: 'Fritids',
+    title: { sv: 'Exempel: Utelek i snön', en: 'Example: Outdoor play in the snow', ar: 'مثال: لعب في الثلج' },
+    description: {
+      sv: 'Pulka, snögubbar och varm saft. Ta med varma kläder och vantar.',
+      en: 'Sledging, snowmen and warm cordial. Bring warm clothes and mittens.',
+      ar: 'تزلج ورجال ثلج وعصير دافئ. أحضروا ملابس دافئة وقفازات.',
+    },
+  },
 ]
-
-const EXAMPLE_NOTE: Localized = {
-  sv: 'Exempelpunkt för att prova programmet. Ändra eller ta bort den.',
-  en: 'Example item for trying out the programme. Edit or delete it.',
-  ar: 'عنصر تجريبي لتجربة البرنامج. عدّله أو احذفه.',
-}
 
 function exampleRows(days: ConferenceDay[]): Partial<Session>[] {
   return days.flatMap((d) =>
@@ -84,7 +127,7 @@ function exampleRows(days: ConferenceDay[]): Partial<Session>[] {
       kind: x.kind,
       audience: x.audience,
       title: x.title,
-      description: EXAMPLE_NOTE,
+      description: x.description,
       speaker: x.speaker ?? null,
       room: x.room,
       language: x.kind === 'lecture' || x.kind === 'preshow' ? d.default_lang : null,
@@ -171,6 +214,24 @@ export default function ProgramAdmin() {
   const rooms = useMemo(() => [...new Set(sessions.map((s) => s.room).filter(Boolean))] as string[], [sessions])
   const examples = useMemo(() => sessions.filter(isExample), [sessions])
   const offerExample = auth.isAdmin && !loading && sessions.length === 0
+
+  // "+5 min" bara där det går att använda: i varje sal den punkt som pågår, annars nästa – idag
+  const t = useNow(30_000)
+  const movable = useMemo(() => {
+    const today = localDate(t)
+    const byRoom = new Map<string, Session[]>()
+    for (const s of sessions) {
+      if (localDate(s.starts_at) !== today || sessionStatus(s, t) === 'done') continue
+      const k = s.room ?? ''
+      byRoom.set(k, [...(byRoom.get(k) ?? []), s])
+    }
+    const ids = new Set<string>()
+    for (const list of byRoom.values()) {
+      const ongoing = list.filter((s) => sessionStatus(s, t) === 'ongoing')
+      for (const s of ongoing.length ? ongoing : list.slice(0, 1)) ids.add(s.id)
+    }
+    return ids
+  }, [sessions, t])
 
   /** Förval för en ny punkt på `date`: efter dagens sista punkt, i samma sal, på dagens språk. */
   function blank(date = day || days[0]?.date || localDate(new Date())): Form {
@@ -354,7 +415,7 @@ export default function ProgramAdmin() {
           className="mb-4"
           value={day}
           onChange={setDay}
-          options={days.map((d) => ({ value: d.date, label: `${weekdayShort(d.date)} ${d.date.slice(5)}` }))}
+          options={days.map((d) => ({ value: d.date, label: formatShortDay(d.date) }))}
         />
       )}
 
@@ -393,24 +454,40 @@ export default function ProgramAdmin() {
             const meta = [KIND_LABEL[s.kind], s.audience !== 'adults' && AUDIENCE_LABEL[s.audience], s.speaker, s.room, s.language && LANG_LABEL[s.language]].filter(Boolean)
             const missing = [!s.title.en?.trim() && 'engelska', !s.title.ar?.trim() && 'arabiska'].filter(Boolean)
             return (
-              <li key={s.id} className="flex flex-wrap items-start gap-x-4 gap-y-2 py-4 sm:flex-nowrap sm:items-center">
-                <div className="w-28 shrink-0 font-semibold tabular-nums text-ink">
+              <li key={s.id} className="flex flex-wrap items-start gap-x-3 gap-y-0.5 py-4 sm:flex-nowrap sm:items-center sm:gap-x-4">
+                <div className="w-full shrink-0 font-semibold tabular-nums text-ink sm:w-28">
                   {localTime(s.starts_at)}–{localTime(s.ends_at)}
                 </div>
-                <div className="min-w-0 flex-1 basis-52">
+                <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <span className="text-base font-medium text-ink">{title}</span>
-                    {!s.published && <Badge tone="amber">Dold</Badge>}
+                    {!s.published && <span className="text-base text-muted">(dold för besökare)</span>}
                   </div>
                   <p className="mt-0.5 text-sm text-muted">{meta.join(' · ')}</p>
-                  {missing.length > 0 && <p className="text-sm text-amber-800">Titeln saknas på {missing.join(' och ')}.</p>}
+                  {missing.length > 0 && <p className="text-sm text-muted">Titeln saknas på {missing.join(' och ')}.</p>}
                 </div>
                 {canEdit && (
-                  <div className="ms-auto flex shrink-0 gap-1">
-                    <Button variant="secondary" onClick={() => postpone(s)} title="Skjut upp denna och efterföljande i samma sal">
-                      <Timer className="size-4" aria-hidden /> +5 min
-                    </Button>
-                    <Button variant="ghost" onClick={() => { setErr(null); setForm(toForm(s)) }} aria-label={`Redigera ${title}`}>
+                  <div className="-me-2 flex shrink-0 gap-1 max-sm:-mt-2.5">
+                    {movable.has(s.id) && (
+                      <Button
+                        variant="ghost"
+                        className="text-muted hover:text-ink"
+                        onClick={() => postpone(s)}
+                        title="Skjut upp denna och efterföljande i samma sal"
+                        aria-label={`Skjut upp ${title} och efterföljande i ${s.room || 'samma sal'} 5 minuter`}
+                      >
+                        <Timer className="size-4" aria-hidden /> Skjut upp 5 min
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      className="text-muted hover:text-ink"
+                      onClick={() => {
+                        setErr(null)
+                        setForm(toForm(s))
+                      }}
+                      aria-label={`Redigera ${title}`}
+                    >
                       <Pencil className="size-4" aria-hidden />
                       <span className="hidden sm:inline">Redigera</span>
                     </Button>
@@ -427,6 +504,7 @@ export default function ProgramAdmin() {
         onClose={() => setForm(null)}
         title={form?.id ? 'Redigera programpunkt' : form?.copyOf ? 'Kopia av programpunkt' : 'Ny programpunkt'}
         wide
+        persistent
       >
         {form && (
           <form
@@ -446,10 +524,10 @@ export default function ProgramAdmin() {
                 <Select value={form.date} onChange={(e) => changeDate(e.target.value)}>
                   {days.map((d) => (
                     <option key={d.id} value={d.date}>
-                      {weekdayShort(d.date)} {d.date}
+                      {formatShortDay(d.date)}
                     </option>
                   ))}
-                  {!days.some((d) => d.date === form.date) && <option value={form.date}>{form.date}</option>}
+                  {!days.some((d) => d.date === form.date) && <option value={form.date}>{formatShortDay(form.date)}</option>}
                 </Select>
               </Field>
               <Field label="Start" required>
@@ -486,12 +564,12 @@ export default function ProgramAdmin() {
               </Field>
             </div>
             <LocalizedInput label="Titel" required value={form.title} onChange={(title) => set({ title })} />
-            <LocalizedInput label="Beskrivning" multiline value={form.description} onChange={(description) => set({ description })} />
+            <LocalizedInput label="Beskrivning (valfritt)" multiline value={form.description} onChange={(description) => set({ description })} />
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Talare">
+              <Field label="Talare (valfritt)">
                 <Input value={form.speaker} onChange={(e) => set({ speaker: e.target.value })} />
               </Field>
-              <Field label="Sal eller plats">
+              <Field label="Sal eller plats (valfritt)">
                 <Input list="vk-rooms" value={form.room} onChange={(e) => set({ room: e.target.value })} />
                 <datalist id="vk-rooms">
                   {rooms.map((r) => (
@@ -499,7 +577,7 @@ export default function ProgramAdmin() {
                   ))}
                 </datalist>
               </Field>
-              <Field label="Språk">
+              <Field label="Språk (valfritt)">
                 <Select value={form.language} onChange={(e) => set({ language: e.target.value as Lang | '' })}>
                   <option value="">–</option>
                   <option value="sv">Svenska</option>
@@ -507,7 +585,7 @@ export default function ProgramAdmin() {
                   <option value="en">Engelska</option>
                 </Select>
               </Field>
-              <Field label="Antal platser" hint="Används för att räkna hur full salen är.">
+              <Field label="Antal platser (valfritt)" hint="Används för att räkna hur full salen är, till exempel 400.">
                 <Input type="number" min={0} inputMode="numeric" value={form.capacity} onChange={(e) => set({ capacity: e.target.value })} />
               </Field>
             </div>

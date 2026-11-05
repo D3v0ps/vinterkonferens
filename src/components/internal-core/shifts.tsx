@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
+import { Copy, Trash2 } from 'lucide-react'
 import { api } from '../../lib/api'
 import type { ConferenceDay, Shift, Volunteer } from '../../lib/types'
-import { formatDay, zonedToUtc } from '../../lib/time'
+import { formatShortDay, zonedToUtc } from '../../lib/time'
+import { confirmDialog } from '../dialogs'
 import { Button, Checkbox, ErrorText, Field, Input, Modal, Select, Textarea } from '../ui'
 
 export const shiftStart = (s: Shift) => zonedToUtc(s.date, s.start_time)
@@ -26,7 +28,7 @@ export function groupByDate<T extends { date: string }>(list: T[]): [string, T[]
   return [...m.entries()].sort(([a], [b]) => a.localeCompare(b))
 }
 
-type Draft = Omit<Shift, 'id' | 'created_at'> & { id?: string }
+type Draft = Omit<Shift, 'id' | 'created_at'> & { id?: string; copyOf?: string }
 
 export function ShiftEditor({
   open,
@@ -61,7 +63,7 @@ export function ShiftEditor({
 
   useEffect(() => {
     if (open) {
-      setD({ ...blank(), ...(initial ?? {}), committee_id: committeeId } as Draft)
+      setD({ ...blank(), ...(initial ?? {}), committee_id: committeeId, copyOf: undefined } as Draft)
       setErr(null)
     }
   }, [open, initial])
@@ -98,33 +100,64 @@ export function ShiftEditor({
     }
   }
 
+  async function remove() {
+    if (!d.id) return
+    const ok = await confirmDialog({
+      title: d.title.trim() ? `Ta bort passet ${d.title.trim()}?` : 'Ta bort passet?',
+      message: `${formatShortDay(d.date)} ${d.start_time.slice(0, 5)}–${d.end_time.slice(0, 5)} försvinner ur schemat för alla.`,
+      confirmLabel: 'Ta bort passet',
+      danger: true,
+    })
+    if (!ok) return
+    setBusy(true)
+    setErr(null)
+    try {
+      await api.remove('shifts', d.id)
+      onClose()
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function duplicate() {
+    setErr(null)
+    setD((x) => ({ ...x, id: undefined, copyOf: x.title.trim() || 'passet' }))
+  }
+
   const dayOptions = days.some((x) => x.date === d.date) || !d.date ? days.map((x) => x.date) : [d.date, ...days.map((x) => x.date)]
 
   return (
-    <Modal open={open} onClose={onClose} title={d.id ? 'Redigera pass' : 'Nytt pass'} wide>
+    <Modal open={open} onClose={onClose} title={d.id ? 'Redigera pass' : d.copyOf ? 'Kopia av pass' : 'Nytt pass'} wide persistent>
+      {d.copyOf && !d.id && (
+        <p className="mb-5 rounded-xl bg-ice px-4 py-3 text-base text-ink">
+          En kopia av {d.copyOf}. Ändra det som skiljer, till exempel dag eller tid, och spara.
+        </p>
+      )}
       <div className="grid gap-5 sm:grid-cols-3">
-        <Field label="Dag" required>
+        <Field label="Dag">
           <Select value={d.date} onChange={(e) => set('date', e.target.value)}>
             {dayOptions.map((date) => (
               <option key={date} value={date}>
-                {formatDay(date)}
+                {formatShortDay(date)}
               </option>
             ))}
           </Select>
         </Field>
-        <Field label="Start" required>
+        <Field label="Start">
           <Input type="time" value={d.start_time} onChange={(e) => set('start_time', e.target.value)} />
         </Field>
-        <Field label="Slut" required hint="Slutar passet efter midnatt räknas det till nästa dygn.">
+        <Field label="Slut" hint="Slutar passet efter midnatt räknas det till nästa dygn.">
           <Input type="time" value={d.end_time} onChange={(e) => set('end_time', e.target.value)} />
         </Field>
-        <Field label="Uppgift" required className="sm:col-span-2">
+        <Field label="Uppgift" className="sm:col-span-2">
           <Input value={d.title} onChange={(e) => set('title', e.target.value)} placeholder="t.ex. Lunchservering" />
         </Field>
-        <Field label="Plats">
+        <Field label="Plats (valfritt)">
           <Input value={d.location ?? ''} onChange={(e) => set('location', e.target.value)} placeholder="t.ex. Matsalen" />
         </Field>
-        <Field label="Anteckning" className="sm:col-span-3">
+        <Field label="Anteckning (valfritt)" hint="Syns för alla i kommittén." className="sm:col-span-3">
           <Textarea rows={2} value={d.notes ?? ''} onChange={(e) => set('notes', e.target.value)} />
         </Field>
       </div>
@@ -158,13 +191,25 @@ export function ShiftEditor({
 
       <div className="mt-6 space-y-3">
         <ErrorText>{err}</ErrorText>
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>
-            Avbryt
-          </Button>
-          <Button onClick={save} loading={busy}>
-            Spara pass
-          </Button>
+        <div className="flex flex-wrap items-center gap-2 border-t border-line pt-4">
+          {d.id && (
+            <>
+              <Button type="button" variant="ghost" className="text-rose-700" disabled={busy} onClick={remove}>
+                <Trash2 className="size-4" aria-hidden /> Ta bort
+              </Button>
+              <Button type="button" variant="ghost" disabled={busy} onClick={duplicate}>
+                <Copy className="size-4" aria-hidden /> Duplicera
+              </Button>
+            </>
+          )}
+          <div className="ms-auto flex gap-2">
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Avbryt
+            </Button>
+            <Button type="button" onClick={save} loading={busy}>
+              Spara pass
+            </Button>
+          </div>
         </div>
       </div>
     </Modal>
