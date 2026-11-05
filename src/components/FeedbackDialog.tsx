@@ -201,7 +201,7 @@ export default function FeedbackDialog({ session, onClose, onDone }: { session: 
 
             <fieldset>
               <legend className="mb-2 text-base font-medium text-ink">{t.stars}</legend>
-              <div className="flex justify-center gap-1" dir="ltr">
+              <div className="flex justify-center gap-0 min-[340px]:gap-1" dir="ltr">
                 {[1, 2, 3, 4, 5].map((n) => (
                   <button
                     key={n}
@@ -236,7 +236,7 @@ export default function FeedbackDialog({ session, onClose, onDone }: { session: 
                         aria-pressed={on}
                         onClick={() => setAnswers({ ...answers, [q.key]: on ? undefined : o })}
                         className={cx(
-                          'inline-flex min-h-12 items-center gap-1.5 rounded-full border px-4 text-base font-medium transition-colors',
+                          'inline-flex min-h-12 items-center gap-1.5 border px-4 text-base font-medium transition-colors',
                           on ? 'border-ink bg-ink text-white' : 'border-line bg-white text-ink hover:border-slate-400',
                         )}
                       >

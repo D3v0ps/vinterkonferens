@@ -8,6 +8,15 @@ export function tr(v: Localized | null | undefined, lang: Lang): string {
   return v[lang]?.trim() || v.sv?.trim() || v.en?.trim() || v.ar?.trim() || ''
 }
 
+/**
+ * Språket på texten som `tr` faktiskt visar (samma reservordning), eller null om fältet är tomt.
+ * Behövs för `lang` och `dir`: en arabisk titel i svensk vy ska högerställas i sin kolumn.
+ */
+export function trLang(v: Localized | null | undefined, lang: Lang): Lang | null {
+  if (!v) return null
+  return ([lang, 'sv', 'en', 'ar'] as const).find((l) => v[l]?.trim()) ?? null
+}
+
 export function kr(n: number | null | undefined): string {
   if (n == null || Number.isNaN(n)) return '–'
   return new Intl.NumberFormat('sv-SE', { style: 'currency', currency: 'SEK', minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 }).format(n)

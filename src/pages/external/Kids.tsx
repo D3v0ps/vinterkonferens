@@ -1,5 +1,5 @@
 import { useId, useRef, useState, type ReactNode } from 'react'
-import { CheckCircle2, Plus, Ticket, Trash2 } from 'lucide-react'
+import { ArrowDown, CheckCircle2, Plus, Ticket, Trash2 } from 'lucide-react'
 import { Agenda, DayTabs, PageTitle, PostsList, useDaySessions, useSelectedDay } from '../../components/Agenda'
 import { FormModal } from '../../components/FeedbackDialog'
 import { Button, Checkbox, ErrorText, Input, Spinner, Textarea, cx } from '../../components/ui'
@@ -100,7 +100,7 @@ export default function Kids() {
           className="-mt-2 mb-6 inline-flex min-h-11 items-center gap-1.5 text-base font-medium text-ink underline underline-offset-4"
           onClick={() => document.getElementById('fritids-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
         >
-          {t.register} <span aria-hidden>↓</span>
+          {t.register} <ArrowDown className="size-4 shrink-0" aria-hidden />
         </button>
       )}
       <PostsList page="kids" />

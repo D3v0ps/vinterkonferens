@@ -165,7 +165,7 @@ function fromForm(f: Form): Partial<Session> {
 function PhotoPreview({ form }: { form: Form }) {
   if (form.photoPreview)
     return (
-      <span className="inline-flex size-16 shrink-0 overflow-hidden rounded-full shadow-sm ring-2 ring-white" aria-hidden>
+      <span className="inline-flex size-16 shrink-0 overflow-hidden rounded-full shadow-sm" aria-hidden>
         <img src={form.photoPreview} alt="" className="size-full object-cover" />
       </span>
     )

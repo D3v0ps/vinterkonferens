@@ -86,14 +86,28 @@ export function Select({ children, ...props }: ComponentProps<'select'>) {
 export function Checkbox({ label, checked, onChange, className }: { label: ReactNode; checked: boolean; onChange: (v: boolean) => void; className?: string }) {
   return (
     <label className={cx('flex min-h-11 cursor-pointer items-center gap-3 text-base', className)}>
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="size-5 rounded accent-ink" />
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="size-5 accent-ink" />
       <span>{label}</span>
     </label>
   )
 }
 
-export function Badge({ children, tone = 'slate', className }: { children: ReactNode; tone?: 'slate' | 'green' | 'amber' | 'red' | 'blue' | 'violet' | 'accent'; className?: string }) {
+/**
+ * Tagg i kampanjens form: raka hörn, Montserrat 600, inga versaler. `ink` (navy) och `gold` följer
+ * Temadags trappsteg, t.ex. "Gratis inträde" och dagens språk. På guld står alltid navy text.
+ */
+export function Badge({
+  children,
+  tone = 'slate',
+  className,
+}: {
+  children: ReactNode
+  tone?: 'slate' | 'green' | 'amber' | 'red' | 'blue' | 'violet' | 'accent' | 'ink' | 'gold'
+  className?: string
+}) {
   const tones = {
+    ink: 'bg-ink text-white',
+    gold: 'bg-accent text-ink',
     slate: 'bg-slate-100 text-slate-700',
     green: 'bg-emerald-50 text-emerald-800',
     amber: 'bg-amber-50 text-amber-900',
@@ -102,7 +116,7 @@ export function Badge({ children, tone = 'slate', className }: { children: React
     violet: 'bg-violet-50 text-violet-800',
     accent: 'bg-accent-soft text-accent-strong',
   }
-  return <span className={cx('inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-sm font-medium', tones[tone], className)}>{children}</span>
+  return <span className={cx('inline-flex items-center gap-1 rounded-none px-2 py-0.5 font-schedule text-sm font-semibold', tones[tone], className)}>{children}</span>
 }
 
 export function Spinner({ label }: { label?: string }) {

@@ -50,9 +50,12 @@ h1, h2, h3 {
   text-wrap: balance;
 }
 
-[dir="rtl"] body,
-[lang="ar"] {
-  font-family: var(--font-arabic);
+/* I base-lagret, så att typsnittsklasser (font-schedule, font-display) vinner även på arabiska element */
+@layer base {
+  [dir="rtl"] body,
+  [lang="ar"] {
+    font-family: var(--font-arabic);
+  }
 }
 
 [dir="rtl"] body {
@@ -66,7 +69,7 @@ h1, h2, h3 {
   }
 }
 
-:focus-visible {
+:focus-visible:not(.field) {
   outline: 3px solid var(--color-ink-soft);
   outline-offset: 2px;
 }

@@ -182,7 +182,7 @@ function QuietLink({ to, title, meta, dot }: { to: string; title: string; meta?:
   return (
     <li>
       <Link to={to} className="group flex min-h-14 items-center gap-3 py-3 hover:bg-white/60">
-        {dot && <span className="size-2.5 shrink-0 rounded-[3px]" style={{ background: dot }} aria-hidden />}
+        {dot && <span className="size-2.5 shrink-0" style={{ background: dot }} aria-hidden />}
         <span className="min-w-0 flex-1">
           <span className="block text-base font-medium text-ink group-hover:underline">{title}</span>
           {meta && <span className="block text-sm text-muted">{meta}</span>}

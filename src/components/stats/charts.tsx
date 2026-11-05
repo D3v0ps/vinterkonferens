@@ -113,7 +113,7 @@ export function ColumnChart({
                   className="group relative flex h-full min-w-0 flex-1 items-end justify-center outline-none focus-visible:bg-slate-100"
                 >
                   {d.value > 0 && (
-                    <div className="w-full max-w-6 rounded-t-[4px] transition group-hover:opacity-80" style={{ height: `${h}%`, background: BAR }} />
+                    <div className="w-full max-w-6 transition group-hover:opacity-80" style={{ height: `${h}%`, background: BAR }} />
                   )}
                   {i === peak && (
                     <span className="absolute start-1/2 -translate-x-1/2 text-sm font-semibold tabular-nums rtl:translate-x-1/2" style={{ bottom: `calc(${h}% + 2px)`, color: INK.secondary }}>
@@ -166,7 +166,7 @@ export function SegmentedBar({ parts, label, empty = 'Inga svar ännu.' }: { par
             <div
               key={p.key}
               tabIndex={0}
-              className="group relative flex h-full items-center rounded-[4px] ps-2 text-sm font-semibold outline-none transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ink-soft focus-visible:ring-offset-1"
+              className="group relative flex h-full items-center ps-2 text-sm font-semibold outline-none transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ink-soft focus-visible:ring-offset-1"
               style={{ flexGrow: p.value, flexBasis: 0, background: c.fill, color: c.text }}
             >
               {p.value / total >= 0.16 && <span aria-hidden>{pct(p.value)} %</span>}
@@ -185,7 +185,7 @@ export function Legend({ items }: { items: string[] }) {
     <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm" style={{ color: INK.secondary }}>
       {items.map((it, i) => (
         <li key={it} className="inline-flex items-center gap-1.5">
-          <span className="size-3 rounded-[3px]" style={{ background: ORDINAL[Math.min(i, ORDINAL.length - 1)].fill }} aria-hidden />
+          <span className="size-3" style={{ background: ORDINAL[Math.min(i, ORDINAL.length - 1)].fill }} aria-hidden />
           {it}
         </li>
       ))}

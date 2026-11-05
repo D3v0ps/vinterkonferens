@@ -98,7 +98,8 @@ export function todayStr(): string {
   return localDate(now())
 }
 
-const LOCALE: Record<Lang, string> = { sv: 'sv-SE', en: 'en-GB', ar: 'ar' }
+/** Språk → Intl-locale. Arabiska med västerländska siffror ("6–8 نوفمبر"), som i moskéns eget program. */
+export const LOCALE: Record<Lang, string> = { sv: 'sv-SE', en: 'en-GB', ar: 'ar-u-nu-latn' }
 
 export function formatDay(date: string, lang: Lang = 'sv', opts?: Intl.DateTimeFormatOptions): string {
   const d = zonedToUtc(date, '12:00')

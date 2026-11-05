@@ -284,7 +284,7 @@ export default function MenuAdmin() {
                           <label className="flex min-h-11 shrink-0 cursor-pointer items-center gap-2 text-base text-ink">
                             <input
                               type="checkbox"
-                              className="size-5 rounded accent-ink"
+                              className="size-5 accent-ink"
                               checked={!it.available}
                               disabled={busyId === it.id}
                               onChange={() => toggle(it)}

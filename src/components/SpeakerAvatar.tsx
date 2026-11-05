@@ -1,4 +1,5 @@
-// Talarens porträtt som rund bild, som i det tryckta schemat. Utan foto: initialer.
+// Talarens porträtt som rund bild, som i det tryckta schemat: utan ring, bara en mjuk skugga
+// (som på kampanjens YouTube-kort). Utan foto: initialer.
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import type { Bucket } from '../lib/db'
@@ -53,7 +54,7 @@ export function SpeakerAvatar({ name, photo, className = 'size-12' }: { name: st
   const [failedUrl, setFailedUrl] = useState<string | null>(null)
   return (
     <span
-      className={cx('relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-ice text-ink-soft ring-2 ring-white shadow-sm', className)}
+      className={cx('relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-ice text-ink-soft shadow-sm', className)}
       aria-hidden
     >
       {url && url !== failedUrl ? (

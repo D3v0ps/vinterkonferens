@@ -2,11 +2,11 @@
 import { useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import { Check, Clock, MapPin, Music, Pin, Star } from 'lucide-react'
 import { useConference } from '../lib/conference'
-import { tr } from '../lib/format'
+import { tr, trLang } from '../lib/format'
 import { useList, useNow } from '../lib/hooks'
 import { Tr, useI18n } from '../lib/i18n'
 import { formatShortDay, localDate, localTime, minutesBetween, relMinutes, sessionProgress, sessionStatus } from '../lib/time'
-import type { Audience, ConferenceDay, Lang, Post, PostPage, Session } from '../lib/types'
+import type { Audience, ConferenceDay, Lang, Localized, Post, PostPage, Session } from '../lib/types'
 import FeedbackDialog, { useRated } from './FeedbackDialog'
 import { Button, Empty, cx } from './ui'
 import { categoryLabel, isTalk, lectureNumbers } from '../lib/sessions'
@@ -15,18 +15,27 @@ import { SpeakerAvatar } from './SpeakerAvatar'
 const ARABIC_SCRIPT = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/
 
 /**
- * Rubrik i moskéns rubriksnitt (Abril Fatface, som på konferensens affisch).
- * Arabisk skrift får Amiri via typsnittsstacken.
+ * Rubrik i kampanjens rubriksnitt Abril Fatface, tätt satt utan spärrning som affischernas dagrubrik.
+ * Arabisk skrift sätts i Almarai 800, kampanjens lågkontrastiga sans, aldrig i en naskh som härmar
+ * didonen. Almarai tar även siffrorna, så att "الجمعة 6 نوفمبر" står i ett och samma snitt.
  */
 export function DisplayLast({ text }: { text: string }) {
-  return <span className={cx('font-display font-normal', ARABIC_SCRIPT.test(text) ? 'tracking-normal' : 'tracking-[0.01em]')}>{text}</span>
+  if (ARABIC_SCRIPT.test(text)) return <span className="font-[family-name:Almarai,system-ui,sans-serif] font-extrabold leading-[1.35]">{text}</span>
+  return <span className="font-display font-normal">{text}</span>
+}
+
+/** `lang` och `dir` efter språket på texten som faktiskt visas, så att t.ex. en arabisk titel i svensk vy högerställs. */
+function textLang(v: Localized | null | undefined, lang: Lang) {
+  const l = trLang(v, lang) ?? lang
+  return { lang: l, dir: l === 'ar' ? 'rtl' : 'ltr' } as const
 }
 
 /** Sidans rubrik och ingress på besökarsidorna. */
 export function PageTitle({ title, lead }: { title: string; lead?: string }) {
   return (
     <header className="mb-7">
-      <h1 className="text-[2.25rem] leading-[1.1] text-ink sm:text-5xl">
+      {/* Almarai 800 ser större ut än Abril i samma grad: arabisk rubrik 32/40 px mot 36/48 px */}
+      <h1 className={cx('leading-[1.1] text-ink', ARABIC_SCRIPT.test(title) ? 'text-[2rem] sm:text-[2.5rem]' : 'text-[2.25rem] sm:text-5xl')}>
         <DisplayLast text={title} />
       </h1>
       <span className="mt-3 block h-0.5 w-14 bg-accent" aria-hidden />
@@ -153,27 +162,32 @@ function Progress({ value }: { value: number }) {
   )
 }
 
-/** Punkter som bär programmet (fetstil i schemat): föreläsningar, paneler, aktiviteter och punkter med egen etikett. */
-// Raden staplas (typ och tid på en rad ovanför titeln) i de smalaste skärmarna, och i telefonen när
-// typens text har ett ord som inte ryms i den smala kolumnen (t.ex. "Huvudföreläsning").
+// Telefonen (under sm) har bara två kolumner, typ över tid | innehåll; porträttet står i stället
+// litet före talarnamnet. Raden staplas (typ och tid på en rad ovanför titeln) under 360 px, och i
+// hela telefonläget när typens text har ett ord som inte ryms i den smala kolumnen (t.ex.
+// "Huvudföreläsning"). Från sm: typ | tid | titel | porträtt, som på affischerna.
+// Intervallen överlappar inte: Tailwind lägger max-[360px] före max-sm i CSS:en, så max-sm skulle annars vinna.
 const STACK = {
   narrow: {
-    li: 'max-[359px]:grid-cols-[minmax(0,1fr)_auto]',
-    left: 'max-sm:block max-[359px]:col-start-1 max-[359px]:row-start-1 max-[359px]:flex max-[359px]:flex-wrap max-[359px]:items-baseline max-[359px]:gap-x-2',
-    time: 'max-sm:mt-0.5 max-[359px]:mt-0',
-    content: 'max-[359px]:col-start-1 max-[359px]:row-start-2 max-[359px]:mt-1',
-    avatar: 'max-[359px]:col-start-2 max-[359px]:row-span-2 max-[359px]:row-start-1',
+    li: 'max-[360px]:grid-cols-1',
+    left: 'max-[360px]:flex max-[360px]:flex-wrap max-[360px]:items-baseline max-[360px]:gap-x-2 min-[360px]:max-sm:block',
+    time: 'min-[360px]:max-sm:mt-0.5',
+    content: 'max-[360px]:mt-1',
   },
   phone: {
-    li: 'max-sm:grid-cols-[minmax(0,1fr)_auto]',
-    left: 'max-sm:col-start-1 max-sm:row-start-1 max-sm:flex max-sm:flex-wrap max-sm:items-baseline max-sm:gap-x-2',
+    li: 'max-sm:grid-cols-1',
+    left: 'max-sm:flex max-sm:flex-wrap max-sm:items-baseline max-sm:gap-x-2',
     time: '',
-    content: 'max-sm:col-start-1 max-sm:row-start-2 max-sm:mt-1',
-    avatar: 'max-sm:col-start-2 max-sm:row-span-2 max-sm:row-start-1',
+    content: 'max-sm:mt-1',
   },
 }
 const longestWord = (text: string) => Math.max(0, ...text.split(/\s+/).map((w) => w.length))
 
+/**
+ * Fetstil (600) i listan, webbens tolkning: föreläsningar, paneler, aktiviteter och punkter med egen
+ * etikett bär programmet. Affischen växlar i stället vikt rad för rad (rad 1, 3, 5 … i 600) utan att
+ * det betyder något; den växlingen följer bara schemabilden.
+ */
 function isMain(s: Session, lang: Lang) {
   return isTalk(s) || s.kind === 'activity' || s.kind === 'other' || !!tr(s.label ?? undefined, lang)
 }
@@ -211,16 +225,17 @@ export function Agenda({ sessions, showFeedback = true }: { sessions: Session[];
           const tone = done ? 'text-muted' : 'text-ink'
           const category = categoryLabel(s, lang, t, numbers)
           const stack = STACK[longestWord(category) > 13 ? 'phone' : 'narrow']
+          const title = textLang(s.title, lang)
           return (
             <li
               key={s.id}
               className={cx(
-                'grid grid-cols-[7.25rem_minmax(0,1fr)_auto] gap-x-3 py-3.5 text-base sm:grid-cols-[clamp(9rem,var(--cat),15rem)_7.75rem_minmax(0,1fr)_3.5rem] sm:gap-x-5 sm:py-4 sm:text-lg',
+                'grid grid-cols-[7.25rem_minmax(0,1fr)] gap-x-3 py-3.5 text-base sm:grid-cols-[clamp(9rem,var(--cat),15rem)_7.75rem_minmax(0,1fr)_3.5rem] sm:gap-x-5 sm:py-4 sm:text-lg',
                 stack.li,
               )}
               aria-current={ongoing ? 'true' : undefined}
             >
-              {/* Typ och tid: två kolumner på bred skärm, staplade i telefonen och på en rad ovanför titeln i de smalaste */}
+              {/* Typ och tid: två kolumner på bred skärm, staplade i telefonen och på en rad ovanför titeln när det är trångt */}
               <div className={cx('contents', stack.left)}>
                 <p lang={lang} className={cx('text-base leading-snug break-words hyphens-auto sm:text-lg', main ? 'font-semibold' : 'font-normal', tone)}>
                   {tr(s.label ?? undefined, lang) ? <Tr value={s.label} /> : category}
@@ -243,19 +258,29 @@ export function Agenda({ sessions, showFeedback = true }: { sessions: Session[];
                     {t.next} · {relMinutes(minutesBetween(at, s.starts_at), lang)}
                   </p>
                 )}
+                {/* Titelns eget språk och riktning: arabiska högerställs i kolumnen, som på fredagsaffischen */}
                 <h3
+                  lang={title.lang}
+                  dir={title.dir}
                   className={cx(
                     'text-base leading-snug break-words hyphens-auto sm:text-lg',
                     main ? 'font-semibold' : 'font-normal',
                     done ? 'text-muted line-through decoration-1' : 'text-ink',
                   )}
                 >
-                  {done && <span className="sr-only">{t.done}: </span>}
-                  <Tr value={s.title} />
+                  {done && (
+                    <span lang={lang} className="sr-only">
+                      {t.done}:{' '}
+                    </span>
+                  )}
+                  {tr(s.title, lang)}
                 </h3>
+                {/* Talaren följer titelns sida. I telefonen står porträttet här, litet före namnet. */}
                 {s.speaker && (
-                  <p className={cx('mt-0.5 font-sans text-base break-words', panel || done ? 'text-muted' : 'text-ink-soft')}>
-                    <bdi>{s.speaker}</bdi>
+                  <p dir={title.dir} className={cx('mt-0.5 flex items-center gap-2 font-sans text-base', avatar && 'max-sm:mt-1.5', panel || done ? 'text-muted' : 'text-ink-soft')}>
+                    {avatar && <SpeakerAvatar name={s.speaker} photo={s.speaker_photo} className={cx('size-8 text-sm sm:hidden', done && 'opacity-60 grayscale')} />}
+                    {/* bdi räknar "start" från namnets egen riktning: ett latinskt namn som bryts i en högerställd rad ska ändå stå till höger */}
+                    <bdi className={cx('min-w-0 break-words', title.dir === 'rtl' ? 'text-right' : 'text-left')}>{s.speaker}</bdi>
                   </p>
                 )}
                 {description && !done && (
@@ -290,8 +315,8 @@ export function Agenda({ sessions, showFeedback = true }: { sessions: Session[];
                   ))}
               </div>
 
-              <div className={cx('flex justify-end', stack.avatar)}>
-                {avatar && <SpeakerAvatar name={s.speaker!} photo={s.speaker_photo} className={cx('size-10 text-sm sm:size-14 sm:text-base', done && 'opacity-60 grayscale')} />}
+              <div className="flex justify-end max-sm:hidden">
+                {avatar && <SpeakerAvatar name={s.speaker!} photo={s.speaker_photo} className={cx('size-14 text-base', done && 'opacity-60 grayscale')} />}
               </div>
             </li>
           )
@@ -342,8 +367,8 @@ export function NowNext({ sessions, rateBanner = true }: { sessions: Session[]; 
           <Star className="size-6 shrink-0 fill-accent text-accent-strong" aria-hidden />
           <div className="min-w-0 flex-1">
             <p className="text-base text-muted">{t.justEnded}</p>
-            <p className="text-base font-semibold break-words text-ink">
-              <Tr value={justEnded.title} />
+            <p {...textLang(justEnded.title, lang)} className="font-schedule text-base font-semibold break-words text-ink">
+              {tr(justEnded.title, lang)}
             </p>
           </div>
           <Button className="shrink-0" onClick={() => setRating(justEnded)}>
@@ -361,8 +386,8 @@ export function NowNext({ sessions, rateBanner = true }: { sessions: Session[]; 
                 <p className="flex items-center gap-2 text-base font-medium text-accent-strong">
                   <LiveDot /> {t.now}
                 </p>
-                <p className="mt-1 text-xl leading-snug font-semibold text-ink">
-                  <Tr value={ongoing.title} />
+                <p {...textLang(ongoing.title, lang)} className="mt-1 font-schedule text-xl leading-snug font-semibold text-ink">
+                  {tr(ongoing.title, lang)}
                 </p>
                 <p className="mt-0.5 text-base text-muted">
                   {ongoing.speaker && (
@@ -386,8 +411,8 @@ export function NowNext({ sessions, rateBanner = true }: { sessions: Session[]; 
                 <p className="flex items-center gap-2 text-base font-medium text-ink">
                   <Clock className="size-4 shrink-0" aria-hidden /> {next.kind === 'panel' ? t.nextPanel : t.nextLecture} · {relMinutes(minutesBetween(at, next.starts_at), lang)}
                 </p>
-                <p className="mt-1 text-xl leading-snug font-semibold text-ink">
-                  <Tr value={next.title} />
+                <p {...textLang(next.title, lang)} className="mt-1 font-schedule text-xl leading-snug font-semibold text-ink">
+                  {tr(next.title, lang)}
                 </p>
                 <p className="mt-0.5 text-base text-muted">
                   <span dir="ltr">{localTime(next.starts_at)}</span>

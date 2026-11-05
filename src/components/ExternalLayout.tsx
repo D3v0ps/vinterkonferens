@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react'
 import { ArrowLeft, Baby, CalendarDays, ClipboardList, Coffee, Home, LogIn } from 'lucide-react'
-import { Link, NavLink, Outlet } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useConference } from '../lib/conference'
 import { I18nProvider, LANG_LABEL, LANG_SHORT, useI18n } from '../lib/i18n'
 import { LANGS } from '../lib/types'
 import { Button, cx } from './ui'
 import DemoBar from './DemoBar'
-import { Logo } from './Brand'
+import { Logo, PlaceLine } from './Brand'
 import { DisplayLast } from './Agenda'
 
 export default function ExternalLayout() {
@@ -74,7 +74,7 @@ function NotVolunteerBody({ email, onSignOut, children }: { email: string | null
   )
 }
 
-/** Språkväljare: tydliga knappar med språkets eget namn, minst 44 px höga. */
+/** Språkväljare: tydliga knappar med språkets eget namn, minst 44 px höga, raka hörn som kampanjen. */
 function LanguageSwitch() {
   const { t, lang, setLang } = useI18n()
   return (
@@ -90,7 +90,7 @@ function LanguageSwitch() {
           aria-label={LANG_LABEL[l]}
           title={LANG_LABEL[l]}
           className={cx(
-            'min-h-11 min-w-11 rounded-[0.6rem] px-2.5 text-base font-medium transition-colors',
+            'min-h-11 min-w-11 rounded-none px-2.5 text-base font-medium transition-colors',
             lang === l ? 'bg-ink text-white' : 'text-muted hover:text-ink',
           )}
         >
@@ -105,6 +105,7 @@ function LanguageSwitch() {
 function Shell({ children, staffLink = true }: { children?: ReactNode; staffLink?: boolean }) {
   const { t } = useI18n()
   const { settings } = useConference()
+  const onHome = useLocation().pathname === '/'
   const nav = [
     { to: '/', label: t.home, icon: Home, end: true },
     { to: '/program', label: t.adultsShort, icon: CalendarDays },
@@ -147,7 +148,9 @@ function Shell({ children, staffLink = true }: { children?: ReactNode; staffLink
 
       {staffLink && (
         // Ingen linje: sidans sista lista har redan en, och luften räcker som avgränsning.
+        // Platsraden avslutar sidan som fotraden på schemaaffischerna.
         <footer className="no-print mx-auto max-w-3xl px-4 pt-6 pb-6">
+          {settings.venue?.trim() && !onHome && <PlaceLine venue={settings.venue} className="mb-3 text-muted" />}
           <Link to="/intern" className="inline-flex min-h-11 items-center gap-2 text-base text-muted hover:text-ink">
             <LogIn className="size-4 rtl:-scale-x-100" aria-hidden /> {t.staffLogin}
           </Link>

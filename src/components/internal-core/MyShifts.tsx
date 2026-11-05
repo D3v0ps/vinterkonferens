@@ -32,7 +32,7 @@ export function ShiftItem({ shift: s, state, others, dateLabel }: { shift: Shift
         </div>
         {meta && (
           <p className="mt-0.5 flex items-center gap-2 text-base text-muted">
-            {c && <span className="size-2.5 shrink-0 rounded-[3px]" style={{ background: c.color }} aria-hidden />}
+            {c && <span className="size-2.5 shrink-0" style={{ background: c.color }} aria-hidden />}
             {meta}
           </p>
         )}

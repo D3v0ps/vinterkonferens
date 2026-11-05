@@ -1,23 +1,40 @@
-import { Baby, CalendarDays, ChevronRight, Coffee, MapPin } from 'lucide-react'
+import { Baby, CalendarDays, ChevronRight, Coffee } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { DisplayLast, NowNext, PostsList, useDaySessions } from '../../components/Agenda'
-import { brandImage } from '../../components/Brand'
+import { NowNext, PostsList, useDaySessions } from '../../components/Agenda'
+import { PlaceLine, brandImage } from '../../components/Brand'
+import { ConferenceLockup } from '../../components/ConferenceLockup'
+import { cx } from '../../components/ui'
 import { useConference } from '../../lib/conference'
 import { tr } from '../../lib/format'
 import { useNow } from '../../lib/hooks'
 import { Tr, useI18n } from '../../lib/i18n'
-import { TZ, formatShortDay, localTime, sessionStatus, zonedToUtc } from '../../lib/time'
-import type { ConferenceDay, Lang } from '../../lib/types'
+import { LOCALE, TZ, formatShortDay, localTime, sessionStatus, zonedToUtc } from '../../lib/time'
+import { LANGS, type ConferenceDay, type Lang, type Localized } from '../../lib/types'
 
-const LOCALE: Record<Lang, string> = { sv: 'sv-SE', en: 'en-GB', ar: 'ar' }
-
-/** Konferensens dagar som ett spann på sidans språk: "6–8 november", "6–8 November". */
+/** Konferensens dagar som ett spann på sidans språk: "6–8 november", "6–8 November", "6–8 نوفمبر". */
 function dateRange(days: ConferenceDay[], lang: Lang): string {
   if (!days.length) return ''
   const dates = days.map((d) => d.date).sort()
   const f = new Intl.DateTimeFormat(LOCALE[lang], { timeZone: TZ, day: 'numeric', month: 'long' })
   const [a, b] = [zonedToUtc(dates[0], '12:00'), zonedToUtc(dates[dates.length - 1], '12:00')]
-  return dates.length > 1 ? f.formatRange(a, b) : f.format(a)
+  // Engelskan ger "6 – 8 November"; moskén skriver tankstreck utan mellanslag.
+  return dates.length > 1 ? f.formatRange(a, b).replace(/\s*–\s*/, '–') : f.format(a)
+}
+
+/**
+ * Temat som på YouTube-kortet 2025: på sidans språk och därunder samma tema på det andra
+ * konferensspråket (arabiska på den svenska sidan, svenska på den arabiska), lika stort.
+ * Den engelska sidan får bara en rad.
+ */
+function taglineLines(tagline: Localized, lang: Lang): { text: string; lang: Lang }[] {
+  const own = tagline[lang]?.trim()
+  const shownLang = own ? lang : LANGS.find((l) => tagline[l]?.trim())
+  if (!shownLang) return []
+  const lines = [{ text: tagline[shownLang]!.trim(), lang: shownLang }]
+  const other: Lang | null = lang === 'sv' ? 'ar' : lang === 'ar' ? 'sv' : null
+  const second = other && other !== shownLang ? tagline[other]?.trim() : ''
+  if (other && second) lines.push({ text: second, lang: other })
+  return lines
 }
 
 export default function Home() {
@@ -35,10 +52,15 @@ export default function Home() {
       : days[0] && today < days[0].date
         ? `${t.conferenceStarts} ${formatShortDay(days[0].date, lang)}`
         : ''
-  const tagline = tr(settings.tagline, lang)
+  const firstDate = days.map((d) => d.date).sort()[0]
+  const year = firstDate ? firstDate.slice(0, 4) : ''
   const venue = (settings.venue || '').trim()
-  // Utan slogan: datum och plats i stället, så att rubriken aldrig står ensam.
-  const range = tagline ? '' : dateRange(days, lang)
+  // Konferensdagar: kompakt hero (smalare lockup, utan tema och datumruta) så att "Nu & nästa" står högt.
+  const compact = isConferenceDay
+  const taglines = compact ? [] : taglineLines(settings.tagline, lang)
+  // Efter konferensen visas ingen datumruta: den läses annars som att konferensen är på väg.
+  const lastDate = days.map((d) => d.date).sort().at(-1)
+  const range = compact || (lastDate && today > lastDate) ? '' : dateRange(days, lang)
 
   // Tre ingångar som en lugn lista – inga färgade plattor.
   const entries = [
@@ -60,41 +82,56 @@ export default function Home() {
 
   return (
     <>
+      {/* Heron som omslaget 2025: allt på en mittaxel över fasaden i kampanjens navy (85 %), raka hörn */}
       <section
-        className="relative -mx-4 -mt-6 mb-8 overflow-hidden bg-ink bg-cover bg-center px-5 pt-10 pb-11 text-white sm:mx-0 sm:mt-0 sm:rounded-lg sm:px-10 sm:pt-14 sm:pb-14"
-        style={{ backgroundImage: `linear-gradient(rgba(26,35,126,0.84), rgba(26,35,126,0.9)), url(${brandImage('fasad-vinter.webp')})` }}
+        // Lägre på bred skärm så att ingångarna syns; på konferensdagar lite lägre även i telefonen.
+        className={cx(
+          '-mx-4 -mt-6 mb-8 overflow-hidden bg-campaign bg-cover bg-[center_40%] px-6 pb-11 text-center text-white sm:mx-0 sm:mt-0 sm:px-10 sm:pt-10 sm:pb-11',
+          compact ? 'pt-8' : 'pt-10',
+        )}
+        style={{ backgroundImage: `linear-gradient(rgb(33 41 122 / 0.85), rgb(33 41 122 / 0.85)), url(${brandImage('fasad-vinter.webp')})` }}
       >
-        {/* Moskéns geometriska mönster, svagt i guld */}
-        <span
-          className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-60"
-          style={{ backgroundImage: `url(${brandImage('monster-guld.png')})` }}
-          aria-hidden
-        />
-        <div className="relative">
-          {when && <p className="text-base text-white/85 first-letter:uppercase">{when}</p>}
-          <h1 className="mt-2 text-[clamp(2.1rem,8.6vw,3.75rem)] leading-[1.05] break-words hyphens-auto">
-            <DisplayLast text={settings.conference_name} />
-          </h1>
-          <span className="mt-4 block h-0.5 w-20 bg-accent" aria-hidden />
-          {tagline ? (
-            <p className="mt-4 max-w-[36ch] text-xl leading-snug text-white">
-              <Tr value={settings.tagline} />
-            </p>
-          ) : (
-            (range || venue) && (
-              <p className="mt-4 max-w-[36ch] text-xl leading-snug text-white">
-                {range}
-                {range && venue && ' · '}
-                {venue && <bdi>{venue}</bdi>}
-              </p>
-            )
-          )}
-          {tagline && venue && (
-            <p className="mt-3 flex items-center gap-1.5 text-base text-white/85">
-              <MapPin className="size-4 shrink-0" aria-hidden /> <bdi>{venue}</bdi>
+        {when && <p className="mb-8 text-base text-white/85 first-letter:uppercase">{when}</p>}
+        <ConferenceLockup name={settings.conference_name} year={year} compact={compact}>
+          {taglines.length > 0 && (
+            <p className="mt-[calc(var(--f2)*0.9)] text-lg text-white sm:text-xl">
+              {taglines.map((x, i) => (
+                <span
+                  key={x.lang}
+                  lang={x.lang === lang ? undefined : x.lang}
+                  dir={x.lang === lang ? undefined : x.lang === 'ar' ? 'rtl' : 'ltr'}
+                  className={cx('block text-balance', i > 0 && 'mt-1', x.lang === 'ar' ? 'text-[1.1em] leading-relaxed font-bold' : 'font-schedule leading-snug font-semibold')}
+                >
+                  {x.text}
+                </span>
+              ))}
             </p>
           )}
-        </div>
+          {(range || venue) && (
+            // Datumrutan och platsraden blir lika breda, som på omslaget
+            <p
+              className={cx(
+                'mx-auto flex w-fit flex-col items-stretch',
+                !range ? 'mt-[calc(var(--f2)*0.8_-_0.42rem)]' : taglines.length ? 'mt-[calc(var(--f2)*0.6)]' : 'mt-[calc(var(--f2)*1)]',
+              )}
+            >
+              {range && (
+                <span
+                  className={cx(
+                    'block bg-white px-[0.57em] leading-none text-campaign',
+                    // Luften räknas från siffrornas över- och underkant, som på omslaget (cirka 0,4 em).
+                    // Almarai står lägre i raden och har underhäng, därför mer luft under.
+                    lang === 'ar' ? 'pt-[0.22em] pb-[0.42em] font-extrabold' : 'pt-[0.27em] pb-[0.32em] font-display',
+                  )}
+                  style={{ fontSize: 'calc(var(--f2) * 0.6)', ...(lang === 'ar' ? { fontFamily: '"Almarai", var(--font-arabic)' } : {}) }}
+                >
+                  {range}
+                </span>
+              )}
+              {venue && <PlaceLine venue={venue} className={range ? 'mt-[calc(var(--f2)*0.4_-_0.42rem)]' : ''} />}
+            </p>
+          )}
+        </ConferenceLockup>
       </section>
 
       <PostsList page="home" />
