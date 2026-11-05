@@ -30,6 +30,16 @@ function PosterBody({ date }: { date: string }) {
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const canvas = useRef<HTMLCanvasElement | null>(null)
+  // Ritas om en gång när webbtypsnitten är klara, om de inte hann laddas till första bilden.
+  const [fontTick, setFontTick] = useState(0)
+  const fontRetry = useRef(false)
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
 
   const day = useMemo(() => data.filter((s) => localDate(s.starts_at) === date && s.audience !== 'kids'), [data, date])
   const drafts = day.filter((s) => !s.published).length
@@ -43,22 +53,31 @@ function PosterBody({ date }: { date: string }) {
     let live = true
     setBusy(true)
     setErr(null)
-    const c = document.createElement('canvas')
-    renderPoster({ conferenceName: settings.conference_name, venue: settings.venue, date, lang, sessions: list }, c)
-      .then(canvasToPng)
-      .then((png) => {
+    renderPoster({ conferenceName: settings.conference_name, venue: settings.venue, date, lang, sessions: list })
+      .then(async ({ canvas: c, fontsLoaded }) => {
+        if (!fontsLoaded && !fontRetry.current && document.fonts?.ready) {
+          fontRetry.current = true
+          void document.fonts.ready.then(() => mounted.current && setFontTick((n) => n + 1))
+        }
+        const png = await canvasToPng(c)
         if (!live) return
         canvas.current = c
         setPreview(URL.createObjectURL(png))
       })
-      .catch((e: Error) => live && setErr(e.message || 'Bilden kunde inte skapas.'))
+      .catch((e: Error) => {
+        if (!live) return
+        // Ingen bild att spara: visa felet i stället för en gammal eller avklippt förhandsvisning.
+        canvas.current = null
+        setPreview(null)
+        setErr(e.message || 'Bilden kunde inte skapas.')
+      })
       .finally(() => live && setBusy(false))
     return () => {
       live = false
     }
     // signature täcker list, lang och inställningarna
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signature, loading, date])
+  }, [signature, loading, date, fontTick])
 
   // Förra förhandsvisningen släpps när en ny kommer (och när rutan stängs).
   useEffect(() => () => void (preview && URL.revokeObjectURL(preview)), [preview])
@@ -92,7 +111,7 @@ function PosterBody({ date }: { date: string }) {
         </Field>
         {drafts > 0 && <Checkbox label={`Ta med utkast (${drafts})`} checked={withDrafts} onChange={setWithDrafts} />}
         {/* Knappen överst, så att den syns utan att man behöver rulla förbi bilden. */}
-        <Button className="ms-auto" onClick={save} loading={saving} disabled={busy || !preview}>
+        <Button className="ms-auto" onClick={save} loading={saving} disabled={busy || !preview || !!err}>
           <Download className="size-4" aria-hidden /> Spara bild
         </Button>
       </div>

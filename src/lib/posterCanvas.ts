@@ -42,16 +42,26 @@ const FACES = [
   '500 30px Montserrat',
   '600 30px Montserrat',
   '700 30px Montserrat',
+  '800 30px Montserrat',
   '400 30px "Noto Sans Arabic"',
+  '500 30px "Noto Sans Arabic"',
   '600 30px "Noto Sans Arabic"',
   '700 84px Amiri',
 ]
 
-/** Väntar på webbtypsnitten (högst några sekunder – utan nät ritas affischen med reservsnitt). */
-async function loadFonts(): Promise<void> {
-  if (!document.fonts?.load) return
-  const all = Promise.all(FACES.map((f) => document.fonts.load(f, f.includes('Arabic') || f.includes('Amiri') ? 'بسم' : 'ÅÄÖ Aa 09').catch(() => [])))
+/**
+ * Väntar på webbtypsnitten för just den text som ska ritas (Google Fonts delar upp snitten per
+ * teckenintervall, så ett kort provord räcker inte för t.ex. arabiska eller ÅÄÖ). Högst fyra sekunder –
+ * utan nät ritas affischen med reservsnitt. Returnerar false om tiden tog slut innan allt var laddat.
+ */
+async function loadFonts(sample: string): Promise<boolean> {
+  if (!document.fonts?.load) return true
+  let done = false
+  const all = Promise.all(FACES.map((f) => document.fonts.load(f, sample).catch(() => []))).then(() => {
+    done = true
+  })
   await Promise.race([all, new Promise((r) => setTimeout(r, 4000))])
+  return done
 }
 
 function loadImage(src: string): Promise<HTMLImageElement | null> {
@@ -101,6 +111,81 @@ function wrap(ctx: Ctx, text: string, width: number, maxLines: number): string[]
   if (line) lines.push(line)
   if (lines.length > maxLines || lines.some((l) => ctx.measureText(l).width > width)) return null
   return lines
+}
+
+/** Delar ett ord som är bredare än `width` i bitar som får plats. */
+function splitWord(ctx: Ctx, word: string, width: number): string[] {
+  const parts: string[] = []
+  let part = ''
+  for (const ch of word) {
+    if (part && ctx.measureText(part + ch).width > width) {
+      parts.push(part)
+      part = ch
+    } else part += ch
+  }
+  if (part) parts.push(part)
+  return parts
+}
+
+/**
+ * Som wrap, men ger alltid ett resultat: för långa ord delas, och blir det fler än `maxLines` rader
+ * kortas den sista med "…". Används när texten inte får plats ens med minsta storlek.
+ */
+function clampLines(ctx: Ctx, text: string, width: number, maxLines: number): string[] {
+  const words = text
+    .split(/\s+/)
+    .filter(Boolean)
+    .flatMap((w) => (ctx.measureText(w).width > width ? splitWord(ctx, w, width) : [w]))
+  const lines: string[] = []
+  let line = ''
+  for (const w of words) {
+    const next = line ? `${line} ${w}` : w
+    if (!line || ctx.measureText(next).width <= width) line = next
+    else {
+      lines.push(line)
+      line = w
+    }
+  }
+  if (line) lines.push(line)
+  if (lines.length <= maxLines) return lines
+  const kept = lines.slice(0, maxLines)
+  let last = `${kept[maxLines - 1]} ${lines[maxLines]}`
+  while (last && ctx.measureText(`${last}…`).width > width) last = last.slice(0, -1).trimEnd()
+  kept[maxLines - 1] = `${last}…`
+  return kept
+}
+
+interface Fitted {
+  lines: string[]
+  size: number
+  /** Bredaste raden i den valda storleken. */
+  width: number
+}
+
+/**
+ * Väljer storlek och radbrytning: varje steg är [högst antal rader, storlekar att prova i ordning].
+ * Får texten inte plats i något steg kortas den i sista stegets minsta storlek.
+ */
+function fitText(ctx: Ctx, text: string, width: number, steps: [number, number[]][], setFont: (size: number) => void): Fitted {
+  const done = (lines: string[], size: number): Fitted => ({ lines, size, width: Math.max(0, ...lines.map((l) => ctx.measureText(l).width)) })
+  for (const [maxLines, sizes] of steps) {
+    for (const size of sizes) {
+      setFont(size)
+      const lines = wrap(ctx, text, width, maxLines)
+      if (lines) return done(lines, size)
+    }
+  }
+  const [maxLines, sizes] = steps[steps.length - 1]
+  const size = sizes[sizes.length - 1]
+  setFont(size)
+  return done(clampLines(ctx, text, width, maxLines), size)
+}
+
+// Första starka bokstaven avgör riktningen, som dir="auto" i webbläsaren.
+const STRONG = /[A-Za-z\u00C0-\u024F\u0370-\u04FF\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/
+const startsArabic = (text: string) => {
+  const m = STRONG.exec(text)
+  return !!m && ARABIC.test(m[0])
 }
 
 /** Krymper typsnittet tills texten får plats på en rad. Returnerar storleken. */
@@ -203,18 +288,25 @@ interface Row {
   category: string
   time: string
   title: string
+  /** Titeln är arabisk text (högerställs i kolumnen). */
+  arabicTitle: boolean
   strong: boolean
   panel: boolean
+  /** Talare med porträtt till höger om tabellen (alla utom paneler). */
+  portrait: boolean
   photo: HTMLImageElement | null
 }
 
 interface Laid {
   row: Row
-  titleLines: string[]
-  titleSize: number
+  cat: Fitted
+  title: Fitted
   sub: string[]
   subSize: number
+  /** Radens höjd, inklusive plats för porträttet och namnet under det. */
   height: number
+  /** Porträttets mittpunkt räknat från radens överkant. */
+  avatarY: number
 }
 
 /** "Sh. Mohammed Amin Kharraki" → ["SH. MOHAMMED", "AMIN KHARRAKI"] som under porträtten. */
@@ -225,7 +317,17 @@ function nameLines(name: string): [string, string] {
   return [w.slice(0, cut).join(' '), w.slice(cut).join(' ')]
 }
 
-function drawAvatar(ctx: Ctx, cx: number, cy: number, r: number, row: Row, lang: Lang) {
+/** Porträttets mått i skala k: radie, avstånd till namnraderna och hela namnblockets höjd. */
+function portraitMetrics(k: number) {
+  const r = Math.round(34 * k)
+  const nameSize = Math.max(9, Math.round(11 * k))
+  const gap1 = Math.max(nameSize + 3, Math.round(15 * k))
+  const gap2 = Math.max(nameSize + 1, Math.round(12 * k))
+  return { r, nameSize, gap1, gap2, below: gap1 + gap2 + 4 }
+}
+
+function drawAvatar(ctx: Ctx, cx: number, cy: number, k: number, row: Row, lang: Lang) {
+  const { r, nameSize, gap1, gap2 } = portraitMetrics(k)
   ctx.save()
   ctx.beginPath()
   ctx.arc(cx, cy, r, 0, Math.PI * 2)
@@ -249,7 +351,7 @@ function drawAvatar(ctx: Ctx, cx: number, cy: number, r: number, row: Row, lang:
     font(ctx, 600, Math.round(r * 0.62), 'sv')
     ctx.fillText(initials(row.s.speaker ?? ''), cx, cy + 1)
   }
-  ctx.lineWidth = 3
+  ctx.lineWidth = Math.max(2, 3 * k)
   ctx.strokeStyle = WHITE
   ctx.stroke()
   ctx.restore()
@@ -262,35 +364,65 @@ function drawAvatar(ctx: Ctx, cx: number, cy: number, r: number, row: Row, lang:
   ctx.direction = 'ltr'
   setSpacing(ctx, 0.3)
   const maxW = 2 * r + 46
-  let y = cy + r + 15
+  let y = cy + r + gap1
   if (a) {
-    fitSize(ctx, a, maxW, 11, 8, (s) => font(ctx, 500, s, lang))
+    fitSize(ctx, a, maxW, nameSize, 8, (s) => font(ctx, 500, s, lang))
     ctx.fillText(a, cx, y)
-    y += 12
+    y += gap2
   }
-  fitSize(ctx, b, maxW, 11, 8, (s) => font(ctx, 800, s, lang))
+  fitSize(ctx, b, maxW, nameSize, 8, (s) => font(ctx, 800, s, lang))
   ctx.fillText(b, cx, y)
   setSpacing(ctx, 0)
 }
 
-/** Ritar affischen på en canvas och returnerar den. */
-export async function renderPoster(input: PosterInput, target?: HTMLCanvasElement): Promise<HTMLCanvasElement> {
+/** Felet när dagens program inte får plats ens med minsta texten. */
+export const POSTER_OVERFLOW = 'Dagens program får inte plats på en bild. Korta några titlar eller dölj programpunkter som inte behöver vara med.'
+
+export interface PosterResult {
+  canvas: HTMLCanvasElement
+  /** False om webbtypsnitten inte hann laddas; rita då om när document.fonts.ready är klart. */
+  fontsLoaded: boolean
+}
+
+/** Ritar affischen på en canvas. Kastar ett fel med en svensk förklaring om programmet inte får plats. */
+export async function renderPoster(input: PosterInput, target?: HTMLCanvasElement): Promise<PosterResult> {
   const { lang, date } = input
   const rtl = lang === 'ar'
-  const [, bg, logo] = await Promise.all([loadFonts(), loadImage(brandImage('fasad-vinter.webp')), loadImage(brandImage('logo-horisontell-vit.png'))])
 
   const sessions = [...input.sessions].sort((a, b) => a.starts_at.localeCompare(b.starts_at))
   const numbers = lectureNumbers(sessions)
-  const photos = await Promise.all(sessions.map((s) => (s.kind !== 'panel' && s.speaker ? speakerPhoto(s.speaker_photo) : Promise.resolve(null))))
-  const rows: Row[] = sessions.map((s, i) => ({
-    s,
-    category: categoryLabel(s, lang, KIND[lang], numbers),
-    time: `${localTime(s.starts_at)} - ${localTime(s.ends_at)}`,
-    title: tr(s.title, lang),
-    strong: isTalk(s) || !!tr(s.label ?? undefined, lang),
-    panel: s.kind === 'panel',
-    photo: photos[i],
-  }))
+  const heading = capitalize(formatDay(date, lang, { weekday: 'long', day: 'numeric', month: 'long' }).replace(/[,،]/g, ''), lang)
+  const base: Omit<Row, 'photo'>[] = sessions.map((s) => {
+    const title = tr(s.title, lang)
+    return {
+      s,
+      category: categoryLabel(s, lang, KIND[lang], numbers),
+      time: `${localTime(s.starts_at)} - ${localTime(s.ends_at)}`,
+      title,
+      arabicTitle: startsArabic(title),
+      strong: isTalk(s) || !!tr(s.label ?? undefined, lang),
+      panel: s.kind === 'panel',
+      portrait: s.kind !== 'panel' && !!s.speaker?.trim(),
+    }
+  })
+
+  // Typsnitten laddas för exakt den text som ritas.
+  const sample = [
+    heading,
+    input.conferenceName.toLocaleUpperCase('sv-SE'),
+    date.slice(0, 4),
+    (input.venue || '').toLocaleUpperCase('sv-SE'),
+    EMPTY[lang],
+    ...base.flatMap((r) => [r.category, r.time, r.title, r.s.speaker ?? '', (r.s.speaker ?? '').toLocaleUpperCase('sv-SE')]),
+    'ÅÄÖ Aa 0123456789 بسم',
+  ].join(' ')
+  const [fontsLoaded, bg, logo, photos] = await Promise.all([
+    loadFonts(sample),
+    loadImage(brandImage('fasad-vinter.webp')),
+    loadImage(brandImage('logo-horisontell-vit.png')),
+    Promise.all(base.map((r) => (r.portrait ? speakerPhoto(r.s.speaker_photo) : Promise.resolve(null)))),
+  ])
+  const rows: Row[] = base.map((r, i) => ({ ...r, photo: photos[i] }))
 
   const canvas = target ?? document.createElement('canvas')
   canvas.width = POSTER_W
@@ -298,18 +430,6 @@ export async function renderPoster(input: PosterInput, target?: HTMLCanvasElemen
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('Webbläsaren kan inte rita bilden.')
   ctx.textBaseline = 'alphabetic'
-
-  drawBackground(ctx, bg)
-  drawLockup(ctx, input.conferenceName || 'Konferensen', date.slice(0, 4))
-  drawLogo(ctx, logo)
-
-  // Dagens rubrik
-  ctx.fillStyle = WHITE
-  ctx.textAlign = 'center'
-  ctx.direction = rtl ? 'rtl' : 'ltr'
-  const heading = capitalize(formatDay(date, lang, { weekday: 'long', day: 'numeric', month: 'long' }).replace(/[,،]/g, ''), lang)
-  fitSize(ctx, heading, 1000, 84, 48, (s) => (ctx.font = `400 ${s}px ${DISPLAY}`))
-  ctx.fillText(heading, POSTER_W / 2, 412)
 
   // Kolumner i vänster-till-höger-koordinater; på arabiska speglas allt.
   const left = 157
@@ -320,52 +440,79 @@ export async function renderPoster(input: PosterInput, target?: HTMLCanvasElemen
   const bottom = 1340
 
   function layout(k: number) {
-    const base = Math.round(30 * k)
-    font(ctx!, 600, base, lang)
-    const catW = Math.max(...rows.map((r) => ctx!.measureText(r.category).width), 0)
-    const timeW = Math.max(...rows.map((r) => ctx!.measureText(r.time).width), 0)
+    const b = Math.round(30 * k)
+    const pad = Math.round(14 * k)
+    const rowFont = (row: Row, l: Lang = lang) => (size: number) => font(ctx!, row.strong ? 600 : 400, size, l)
+
+    // Typkolumnen: högst ~300 px, långa egna etiketter bryts på två rader och krymper vid behov.
+    const catCap = 300 * k
+    const cats = rows.map((row) => fitText(ctx!, row.category, catCap, [[1, [b, Math.round(b * 0.9), Math.round(b * 0.8)]], [2, [Math.round(b * 0.8), Math.round(b * 0.7)]]], rowFont(row)))
+    const catW = Math.min(catCap, Math.max(0, ...cats.map((c) => c.width)))
+    font(ctx!, 600, b, 'sv')
+    const timeW = Math.max(0, ...rows.map((r) => ctx!.measureText(r.time).width))
     const timeX = left + Math.max(250 * k, catW + 40 * k)
     const titleX = timeX + timeW + 45 * k
     const titleW = right - titleX
-    const laid: Laid[] = rows.map((row) => {
-      let size = base
-      let lines: string[] | null = null
-      for (const s of [base, Math.round(base * 0.9), Math.round(base * 0.8)]) {
-        font(ctx!, row.strong ? 600 : 400, s, lang)
-        lines = wrap(ctx!, row.title, titleW, 1)
-        if (lines) {
-          size = s
-          break
-        }
-      }
-      if (!lines) {
-        for (const s of [Math.round(base * 0.8), Math.round(base * 0.73), Math.round(base * 0.66)]) {
-          font(ctx!, row.strong ? 600 : 400, s, lang)
-          lines = wrap(ctx!, row.title, titleW, 2)
-          size = s
-          if (lines) break
-        }
-      }
-      if (!lines) {
-        font(ctx!, 600, size, lang)
-        lines = wrap(ctx!, row.title, titleW, 3) ?? [row.title]
-      }
-      const subSize = Math.round(17 * k)
+    const subSize = Math.round(17 * k)
+    const pm = portraitMetrics(k)
+
+    const laid: Laid[] = rows.map((row, i) => {
+      // Titeln: en rad om det går, annars två i mindre storlek, i sista hand tre (och "…").
+      const title = fitText(
+        ctx!,
+        row.title,
+        titleW,
+        [
+          [1, [b, Math.round(b * 0.9), Math.round(b * 0.8)]],
+          [2, [Math.round(b * 0.8), Math.round(b * 0.73), Math.round(b * 0.66)]],
+          [3, [Math.round(b * 0.66)]],
+        ],
+        rowFont(row, row.arabicTitle ? 'ar' : lang),
+      )
       let sub: string[] = []
-      if (row.panel && row.s.speaker) {
+      if (row.panel && row.s.speaker?.trim()) {
         font(ctx!, 500, subSize, lang)
-        sub = wrap(ctx!, row.s.speaker, titleW, 2) ?? [row.s.speaker]
+        sub = clampLines(ctx!, row.s.speaker.trim(), titleW, 2)
       }
-      const lineH = size * 1.22
-      const content = lines.length * lineH + sub.length * subSize * 1.35
-      const height = Math.max(62 * k, content + 26 * k)
-      return { row, titleLines: lines, titleSize: size, sub, subSize, height }
+      const catBlock = cats[i].lines.length * cats[i].size * 1.22
+      const titleBlock = title.lines.length * title.size * 1.22 + sub.length * subSize * 1.35
+      const height = Math.max(62 * k, Math.max(catBlock, titleBlock) + 26 * k)
+      // Porträttet centreras på raden men får inte sticka upp över linjen ovanför.
+      const avatarY = Math.max(height / 2, pm.r + pad / 4)
+      return { row, cat: cats[i], title, sub, subSize, height, avatarY }
     })
-    return { laid, timeX, titleX, titleW, base, total: laid.reduce((a, l) => a + l.height, 0) }
+
+    // Porträtt och namn får hänga ner över rader utan eget porträtt (som på affischerna), men aldrig
+    // in i nästa porträtt eller under tabellens sista linje: raden görs högre när det behövs.
+    laid.forEach((l, i) => {
+      if (!l.row.portrait) return
+      let band = 0
+      for (let j = i; j < laid.length && (j === i || !laid[j].row.portrait); j++) band += laid[j].height
+      const need = l.avatarY + pm.r + pm.below + 6 * k
+      if (band < need) l.height += need - band
+    })
+    return { laid, timeX, titleX, base: b, pad, total: laid.reduce((a, l) => a + l.height, 0) }
   }
 
-  let L = layout(1)
-  if (L.total > bottom - top) L = layout(Math.max(0.6, ((bottom - top) / L.total) * 0.98))
+  // Krymp allt i små steg tills tabellen får plats; går det inte ens i halv storlek blir det ett fel.
+  let k = 1
+  let L = layout(k)
+  while (L.total > bottom - top && k > 0.5) {
+    k = Math.max(0.5, Math.round((k - 0.02) * 100) / 100)
+    L = layout(k)
+  }
+  if (L.total > bottom - top) throw new Error(POSTER_OVERFLOW)
+
+  drawBackground(ctx, bg)
+  drawLockup(ctx, input.conferenceName || 'Konferensen', date.slice(0, 4))
+  drawLogo(ctx, logo)
+
+  // Dagens rubrik
+  ctx.fillStyle = WHITE
+  ctx.textAlign = 'center'
+  ctx.direction = rtl ? 'rtl' : 'ltr'
+  fitSize(ctx, heading, 1000, 84, 48, (s) => (ctx.font = `400 ${s}px ${DISPLAY}`))
+  ctx.fillText(heading, POSTER_W / 2, 412)
 
   const rule = (y: number) => {
     ctx.globalAlpha = 0.85
@@ -384,48 +531,40 @@ export async function renderPoster(input: PosterInput, target?: HTMLCanvasElemen
   } else {
     rule(top)
     let y = top
-    let avatarFloor = 0
     for (const l of L.laid) {
       const { row } = l
-      const pad = Math.round(14 * (L.base / 30))
-      const first = y + pad + l.titleSize * 0.95
-      const catSize = L.base
+      const weight = row.strong ? 600 : 400
       ctx.fillStyle = WHITE
 
-      // Typ och tid
+      // Typ (en eller två rader) och tid på samma baslinje som typens första rad
       ctx.textAlign = start
       ctx.direction = rtl ? 'rtl' : 'ltr'
-      font(ctx, row.strong ? 600 : 400, catSize, lang)
-      const catBase = y + pad + catSize * 0.95
-      ctx.fillText(row.category, X(left), catBase)
+      font(ctx, weight, l.cat.size, lang)
+      const catBase = y + L.pad + l.cat.size * 0.95
+      l.cat.lines.forEach((t, i) => ctx.fillText(t, X(left), catBase + i * l.cat.size * 1.22))
       ctx.direction = 'ltr'
       ctx.textAlign = start
-      font(ctx, row.strong ? 600 : 400, catSize, 'sv')
-      ctx.fillText(row.time, X(L.timeX), catBase)
+      font(ctx, weight, L.base, 'sv')
+      ctx.fillText(row.time, X(L.timeX), y + L.pad + L.base * 0.95)
 
       // Titel: arabisk text högerställs i kolumnen, som på affischen
-      const arabicTitle = ARABIC.test(row.title)
-      ctx.direction = arabicTitle ? 'rtl' : 'ltr'
-      const titleAlign = rtl ? (arabicTitle ? 'right' : 'left') : arabicTitle ? 'right' : 'left'
-      const titleAnchor = rtl ? (arabicTitle ? X(L.titleX) : X(right)) : arabicTitle ? right : L.titleX
-      ctx.textAlign = titleAlign
-      font(ctx, row.strong ? 600 : 400, l.titleSize, arabicTitle ? 'ar' : lang)
-      l.titleLines.forEach((t, i) => ctx.fillText(t, titleAnchor, first + i * l.titleSize * 1.22))
+      const first = y + L.pad + l.title.size * 0.95
+      ctx.direction = row.arabicTitle ? 'rtl' : 'ltr'
+      ctx.textAlign = rtl ? (row.arabicTitle ? 'right' : 'left') : row.arabicTitle ? 'right' : 'left'
+      const titleAnchor = rtl ? (row.arabicTitle ? X(L.titleX) : X(right)) : row.arabicTitle ? right : L.titleX
+      font(ctx, weight, l.title.size, row.arabicTitle ? 'ar' : lang)
+      l.title.lines.forEach((t, i) => ctx.fillText(t, titleAnchor, first + i * l.title.size * 1.22))
       if (l.sub.length) {
         font(ctx, 500, l.subSize, lang)
-        ctx.direction = rtl ? 'rtl' : 'ltr'
+        const subArabic = startsArabic(l.sub[0])
+        ctx.direction = subArabic ? 'rtl' : 'ltr'
         ctx.textAlign = start
-        const subTop = first + (l.titleLines.length - 1) * l.titleSize * 1.22 + l.subSize * 1.45
+        const subTop = first + (l.title.lines.length - 1) * l.title.size * 1.22 + l.subSize * 1.45
         l.sub.forEach((t, i) => ctx.fillText(t, X(L.titleX), subTop + i * l.subSize * 1.35))
       }
 
-      // Porträtt till höger om tabellen (vänster på arabiska)
-      if (row.s.speaker && !row.panel) {
-        const r = 34
-        const cy = Math.max(y + l.height / 2, avatarFloor + r + 4)
-        drawAvatar(ctx, X(right + 62), cy, r, row, lang)
-        avatarFloor = cy + r + 32
-      }
+      // Porträtt till höger om tabellen (vänster på arabiska), alltid inom radens eget utrymme
+      if (row.portrait) drawAvatar(ctx, X(right + 62), y + l.avatarY, k, row, lang)
 
       y += l.height
       rule(y)
@@ -444,7 +583,7 @@ export async function renderPoster(input: PosterInput, target?: HTMLCanvasElemen
     ctx.fillText(text, POSTER_W / 2, 1408)
     setSpacing(ctx, 0)
   }
-  return canvas
+  return { canvas, fontsLoaded }
 }
 
 export function canvasToPng(canvas: HTMLCanvasElement): Promise<Blob> {
