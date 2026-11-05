@@ -103,6 +103,8 @@ export function createSupabaseAdapter(sb: SupabaseClient): DataAdapter {
     },
 
     async fileUrl(bucket, path) {
+      // Talarfoton ligger i en publik hink: en fast länk som går att cacha och inte slutar gälla.
+      if (bucket === 'speakers') return sb.storage.from(bucket).getPublicUrl(path).data.publicUrl
       const { data, error } = await sb.storage.from(bucket).createSignedUrl(path, 60 * 60)
       if (error) return null
       return data.signedUrl

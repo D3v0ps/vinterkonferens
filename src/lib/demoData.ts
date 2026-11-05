@@ -1,7 +1,8 @@
 // Minimal exempeldata för demoläget. Konferensen läggs på närmaste fredag–söndag.
-import type { Localized, Session, SessionKind, Audience, TableMap } from './types'
+import type { Lang, Localized, Session, TableMap } from './types'
 import { localDate, zonedToUtc } from './time'
 import { uuid } from './db'
+import { templateRows } from './template2025'
 
 export type DemoDb = { [K in keyof TableMap]: TableMap[K][] }
 
@@ -44,30 +45,23 @@ export function createDemoData(): DemoDb {
     id: uuid(), committee_id: cid(slug), full_name, email, phone: null, is_lead, notes: null, created_at: now,
   })
 
-  type Def = [string, string, SessionKind, Audience, Localized, string | null, string]
-  const preshow = L('Förprogram: poesi', 'Pre-show: poetry', 'برنامج تمهيدي: شعر')
-  const program: Def[] = [
-    ['10:45', '11:00', 'preshow', 'adults', preshow, null, 'Stora salen'],
-    ['11:00', '12:00', 'lecture', 'adults', L('Öppningsföreläsning', 'Opening lecture', 'المحاضرة الافتتاحية'), 'Talare 1', 'Stora salen'],
-    ['12:00', '13:00', 'meal', 'all', L('Lunch', 'Lunch', 'الغداء'), null, 'Matsalen'],
-    ['13:15', '13:30', 'preshow', 'adults', preshow, null, 'Stora salen'],
-    ['13:30', '14:30', 'lecture', 'adults', L('Eftermiddagsföreläsning', 'Afternoon lecture', 'محاضرة بعد الظهر'), 'Talare 2', 'Stora salen'],
-    ['10:30', '12:00', 'activity', 'kids', L('Pyssel', 'Crafts', 'أشغال يدوية'), null, 'Barnrummet'],
-    ['13:30', '14:30', 'activity', 'kids', L('Lekar', 'Games', 'ألعاب'), null, 'Gympasalen'],
+  const conference_days = days.map((date, i) => ({
+    id: uuid(), date, default_lang: (i === 0 ? 'ar' : 'sv') as Lang,
+    label: L(`Dag ${i + 1}`, `Day ${i + 1}`, `اليوم ${i + 1}`),
+  }))
+  // Vuxenprogrammet är förra årets schema (samma mall som under Program i den interna delen), plus fritids.
+  const kids = (date: string, s: string, e: string, title: Localized): Session => ({
+    id: uuid(), starts_at: zonedToUtc(date, s).toISOString(), ends_at: zonedToUtc(date, e).toISOString(),
+    kind: 'activity', audience: 'kids', title, description: {}, speaker: null, room: 'Fritids', language: null,
+    capacity: null, published: true, feedback_enabled: false, created_at: now,
+  })
+  const sessions: Session[] = [
+    ...templateRows(conference_days, true).map((r) => ({ ...r, id: uuid(), created_at: now }) as Session),
+    ...days.flatMap((date) => [
+      kids(date, '13:30', '17:00', L('Pyssel och lek', 'Crafts and games', 'أشغال يدوية وألعاب')),
+      kids(date, '17:00', '20:00', L('Film och fika', 'Film and snacks', 'فيلم ومرطبات')),
+    ]),
   ]
-  const sessions: Session[] = days.flatMap((date, i) =>
-    program.map(([s, e, kind, audience, title, speaker, room]) => ({
-      id: uuid(),
-      starts_at: zonedToUtc(date, s).toISOString(),
-      ends_at: zonedToUtc(date, e).toISOString(),
-      kind, audience, title, description: {}, speaker, room,
-      language: kind === 'lecture' ? (i === 0 ? 'ar' : 'sv') : null,
-      capacity: room === 'Stora salen' ? 400 : null,
-      published: true,
-      feedback_enabled: kind === 'lecture',
-      created_at: now,
-    })),
-  )
 
   const menu = (category: 'food' | 'coffee' | 'snacks', name: Localized, price: number, sort: number) => ({
     id: uuid(), name, description: {}, category, price, available: true, tags: [], sort, created_at: now,
@@ -85,10 +79,7 @@ export function createDemoData(): DemoDb {
       fritids_price: L('Betalning sker på plats.', 'Payment on site.', 'الدفع في المكان.'),
       updated_at: now,
     }],
-    conference_days: days.map((date, i) => ({
-      id: uuid(), date, default_lang: i === 0 ? 'ar' : 'sv',
-      label: L(`Dag ${i + 1}`, `Day ${i + 1}`, `اليوم ${i + 1}`),
-    })),
+    conference_days,
     committees,
     volunteers: [
       person('styrgruppen', 'Demo Admin', 'admin@demo.se', true),
