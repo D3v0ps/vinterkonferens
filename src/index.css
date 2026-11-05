@@ -1,8 +1,10 @@
 @import "tailwindcss";
 
-/* Stockholms moskés profil: logons navy (#1A237E) och guld (#C5B358) på ljus botten.
+/* Stockholms moskés profil: logons navy (#1A237E) och guld (#C5B358) på ljus botten, kampanjens navy
+   (#21297A) i heron och raka hörn som på moskéns kampanjmaterial 2025.
    Guld bär aldrig vit text (2,1:1) – på guld står navy, på ljus botten används det mörka guldet.
-   Ett lugnt gränssnitt – få ramar, ingen versaltext, minst 16 px brödtext. */
+   Rubriker i Abril Fatface, schemat i Montserrat, arabiska i Almarai (lågkontrastig sans, som kampanjen).
+   Ett lugnt gränssnitt – få ramar, versaler bara i namnlogotypen och platsraden, minst 16 px brödtext. */
 @theme {
   --color-ink: #1a237e;
   --color-ink-soft: #2f2d79;
@@ -13,11 +15,17 @@
   --color-accent: #c5b358;
   --color-accent-strong: #76661c;
   --color-accent-soft: #f6f4e6;
-  --font-sans: "Open Sans", "Noto Sans Arabic", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-display: "Abril Fatface", "Amiri", Georgia, "Times New Roman", serif;
-  --font-arabic: "Noto Sans Arabic", "Open Sans", system-ui, sans-serif;
+  /* Kampanjens navy: datumrutans text och tvätten över fotot på omslaget 2025 */
+  --color-campaign: #21297a;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --font-sans: "Open Sans", "Almarai", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Abril Fatface", "Almarai", Georgia, "Times New Roman", serif;
+  /* Open Sans först: latinska tecken i arabisk text stannar i Open Sans, arabiskan faller till Almarai */
+  --font-arabic: "Open Sans", "Almarai", system-ui, sans-serif;
   /* Schemats typsnitt, som på konferensens tryckta schema */
-  --font-schedule: "Montserrat", "Noto Sans Arabic", system-ui, sans-serif;
+  --font-schedule: "Montserrat", "Almarai", system-ui, sans-serif;
 }
 
 html {
@@ -95,4 +103,10 @@ button, [role="button"], a, input, select, textarea {
   .field:focus { border-color: var(--color-ink-soft); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-ink) 18%, transparent); }
   .field:focus-visible { outline: none; }
   .field:disabled { background: var(--color-slate-100); }
+}
+
+/* Abril Fatface finns bara i en vikt: aldrig fejkad fetstil eller kursiv */
+.font-display {
+  font-synthesis-weight: none;
+  font-synthesis-style: none;
 }
