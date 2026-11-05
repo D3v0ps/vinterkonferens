@@ -233,7 +233,7 @@ export function PostCard({ post, onEdit }: { post: Post; onEdit?: (p: Post) => v
       {canEdit && onEdit && (
         <button
           type="button"
-          className="no-print -me-2 grid size-11 shrink-0 place-items-center rounded-xl text-muted hover:bg-slate-100 hover:text-ink"
+          className="no-print -me-2 grid size-11 shrink-0 place-items-center rounded-md text-muted hover:bg-slate-100 hover:text-ink"
           aria-label={`Redigera ${title}`}
           title="Redigera"
           onClick={() => onEdit(post)}

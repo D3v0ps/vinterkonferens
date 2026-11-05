@@ -214,7 +214,7 @@ function ScheduleTab({ committee }: { committee: Committee }) {
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span className={cx('text-base font-semibold tabular-nums', state === 'ongoing' ? 'text-accent-strong' : 'text-ink')}>{timeRange(s)}</span>
                         <h3 className="text-base font-semibold text-ink">{s.title}</h3>
-                        {state === 'ongoing' && <span className="inline-flex items-center gap-1.5 text-base font-medium text-accent-strong"><span className="size-2 rounded-full bg-accent" aria-hidden />Pågår nu</span>}
+                        {state === 'ongoing' && <span className="inline-flex items-center gap-1.5 text-base font-medium text-accent-strong"><span className="size-2 rounded-full bg-accent-strong" aria-hidden />Pågår nu</span>}
                       </div>
                       {s.location && <p className="mt-0.5 text-base text-muted">{s.location}</p>}
                       {s.notes && <p className="mt-1 whitespace-pre-line text-base text-slate-700">{s.notes}</p>}
@@ -279,7 +279,7 @@ function IconBtn({ label, onClick, icon }: { label: string; onClick: () => void;
       aria-label={label}
       title={label}
       onClick={onClick}
-      className="no-print -me-2 grid size-11 shrink-0 place-items-center rounded-xl text-muted hover:bg-slate-100 hover:text-ink"
+      className="no-print -me-2 grid size-11 shrink-0 place-items-center rounded-md text-muted hover:bg-slate-100 hover:text-ink"
     >
       {icon}
     </button>

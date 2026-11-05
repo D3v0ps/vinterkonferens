@@ -13,7 +13,7 @@ export const DEMO_PERSONAS = [
 ]
 
 export const COMMITTEES: [slug: string, name: string, color: string][] = [
-  ['styrgruppen', 'Styrgruppen', '#0f2a47'],
+  ['styrgruppen', 'Styrgruppen', '#1a237e'],
   ['konferencierer', 'Konferencierer', '#7c3aed'],
   ['koket', 'Köket', '#0f766e'],
   ['fritids', 'Fritids', '#15803d'],
@@ -78,7 +78,7 @@ export function createDemoData(): DemoDb {
       id: 1,
       conference_name: 'Vinterkonferensen',
       tagline: L('Tre dagar av gemenskap och kunskap', 'Three days of community and knowledge', 'ثلاثة أيام من الأخوّة والمعرفة'),
-      venue: '',
+      venue: 'Stockholms moské, Medborgarplatsen',
       contact: 'Info-disken vid entrén',
       kitchen_info: L('Öppet 09–19', 'Open 09–19', 'مفتوح 09–19'),
       fritids_info: L('Anmäl i förväg – gå sedan direkt till expresskassan.', 'Register in advance – then go straight to the express desk.', 'سجّل مسبقاً ثم توجّه مباشرة إلى الصندوق السريع.'),

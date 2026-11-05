@@ -287,7 +287,7 @@ function CommitteeRow({ c }: { c: Committee }) {
     <li className="flex flex-wrap items-end gap-3 py-5">
       <label className="block">
         <span className="mb-1.5 block text-base font-medium text-slate-800">Färg</span>
-        <input type="color" value={v.color} onChange={(e) => setV({ ...v, color: e.target.value })} className="h-11 w-14 cursor-pointer rounded-xl border border-line bg-white p-1" />
+        <input type="color" value={v.color} onChange={(e) => setV({ ...v, color: e.target.value })} className="h-11 w-14 cursor-pointer rounded-md border border-line bg-white p-1" />
       </label>
       <Field label="Namn" className="min-w-40 flex-1">
         <Input value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} />

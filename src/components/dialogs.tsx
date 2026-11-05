@@ -134,7 +134,7 @@ export function DialogHost() {
       </Modal>
       <div className="no-print pointer-events-none fixed inset-x-0 bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] z-50 flex flex-col items-center gap-2 px-4 lg:bottom-6" aria-live="polite">
         {toasts.map((t) => (
-          <div key={t.id} role={t.tone === 'error' ? 'alert' : 'status'} className={`pointer-events-auto max-w-md rounded-xl px-4 py-3 text-base shadow-lg ${t.tone === 'error' ? 'bg-rose-700 text-white' : 'bg-ink text-white'}`}>
+          <div key={t.id} role={t.tone === 'error' ? 'alert' : 'status'} className={`pointer-events-auto max-w-md rounded-md px-4 py-3 text-base shadow-lg ${t.tone === 'error' ? 'bg-rose-700 text-white' : 'bg-ink text-white'}`}>
             {t.text}
           </div>
         ))}

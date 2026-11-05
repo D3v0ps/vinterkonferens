@@ -6,6 +6,7 @@ import { I18nProvider, LANG_LABEL, LANG_SHORT, useI18n } from '../lib/i18n'
 import { LANGS } from '../lib/types'
 import { Button, cx } from './ui'
 import DemoBar from './DemoBar'
+import { Logo } from './Brand'
 import { DisplayLast } from './Agenda'
 
 export default function ExternalLayout() {
@@ -58,7 +59,7 @@ function NotVolunteerBody({ email, onSignOut, children }: { email: string | null
       <div className="mt-6 flex flex-wrap gap-2">
         <Link
           to="/"
-          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-ink px-4 py-2.5 text-base font-medium text-white transition-colors hover:bg-ink-soft"
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-ink px-4 py-2.5 text-base font-medium text-white transition-colors hover:bg-ink-soft"
         >
           <ArrowLeft className="size-4 rtl:-scale-x-100" aria-hidden /> {t.toVisitorSite}
         </Link>
@@ -77,7 +78,7 @@ function NotVolunteerBody({ email, onSignOut, children }: { email: string | null
 function LanguageSwitch() {
   const { t, lang, setLang } = useI18n()
   return (
-    <div className="flex shrink-0 rounded-xl border border-line bg-white p-0.5" role="group" aria-label={t.language}>
+    <div className="flex shrink-0 rounded-md border border-line bg-white p-0.5" role="group" aria-label={t.language}>
       {LANGS.map((l) => (
         <button
           key={l}
@@ -115,9 +116,8 @@ function Shell({ children, staffLink = true }: { children?: ReactNode; staffLink
       <DemoBar />
       <header className="border-b border-line">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-2.5">
-          <Link to="/" className="flex min-h-11 min-w-0 items-center gap-2 text-ink">
-            <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" className="size-7 shrink-0 rounded-lg" />
-            <span className="truncate text-lg font-semibold">{settings.conference_name}</span>
+          <Link to="/" className="flex min-h-11 min-w-0 shrink items-center" aria-label={settings.conference_name}>
+            <Logo className="h-[46px] w-auto max-w-[60vw] object-contain object-left sm:h-[52px]" />
           </Link>
           <LanguageSwitch />
         </div>

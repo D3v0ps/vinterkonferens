@@ -42,7 +42,7 @@ export default function Dashboard() {
         title={
           firstName ? (
             <>
-              Hej <em className="font-display font-normal italic">{firstName}</em>!
+              Hej <span className="font-display font-normal">{firstName}</span>!
             </>
           ) : (
             'Hej!'
@@ -153,13 +153,13 @@ function CountLink({ at, ordning, koket, mine, koketId }: { at: Date; ordning: b
       to="/intern/rakning"
       className={cx(
         'group flex min-h-14 items-center gap-4',
-        live ? 'rounded-2xl bg-accent px-5 py-4 text-white hover:bg-accent-strong' : 'border-y border-line py-4 text-ink',
+        live ? 'rounded-lg bg-accent px-5 py-4 text-ink hover:bg-accent-strong hover:text-white' : 'border-y border-line py-4 text-ink',
       )}
     >
       <Gauge className="size-6 shrink-0" aria-hidden />
       <span className="min-w-0 flex-1">
         <span className={cx('block text-lg font-semibold', !live && 'group-hover:underline')}>{title}</span>
-        <span className={cx('block text-base', live ? 'text-white/90' : 'text-muted')}>{text}</span>
+        <span className={cx('block text-base', live ? 'text-ink/80 group-hover:text-white/90' : 'text-muted')}>{text}</span>
       </span>
       <ChevronRight className={cx('size-5 shrink-0 rtl:rotate-180', !live && 'text-slate-400 group-hover:text-ink')} aria-hidden />
     </Link>

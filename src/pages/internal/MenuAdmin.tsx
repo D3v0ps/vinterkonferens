@@ -232,7 +232,7 @@ export default function MenuAdmin() {
       {!canEdit && <p className="mb-4 text-base text-muted">Menyn ändras av Köket och styrgruppen.</p>}
 
       {canEdit && examples.length > 0 && (
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-xl bg-ice px-4 py-3">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-md bg-ice px-4 py-3">
           <p className="text-base text-ink">Exempelmenyn ligger inne och syns på besökarsidan.</p>
           <Button variant="ghost" className="text-rose-700" loading={exBusy} onClick={removeExamples}>
             <Trash2 className="size-4" aria-hidden /> Ta bort exemplen

@@ -1,6 +1,7 @@
 import { Baby, CalendarDays, ChevronRight, Coffee, MapPin } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { DisplayLast, NowNext, PostsList, useDaySessions } from '../../components/Agenda'
+import { brandImage } from '../../components/Brand'
 import { useConference } from '../../lib/conference'
 import { tr } from '../../lib/format'
 import { useNow } from '../../lib/hooks'
@@ -59,29 +60,41 @@ export default function Home() {
 
   return (
     <>
-      <section className="pt-2 pb-10 sm:pt-8 sm:pb-14">
-        {when && <p className="text-base text-muted first-letter:uppercase">{when}</p>}
-        <h1 className="mt-2 text-[clamp(2.25rem,10.5vw,4.5rem)] leading-[1.02] font-semibold tracking-tight break-words hyphens-auto text-ink">
-          <DisplayLast text={settings.conference_name} />
-        </h1>
-        {tagline ? (
-          <p className="mt-4 max-w-[36ch] text-xl leading-snug text-ink-soft">
-            <Tr value={settings.tagline} />
-          </p>
-        ) : (
-          (range || venue) && (
-            <p className="mt-4 max-w-[36ch] text-xl leading-snug text-ink-soft">
-              {range}
-              {range && venue && ' · '}
-              {venue && <bdi>{venue}</bdi>}
+      <section
+        className="relative -mx-4 -mt-6 mb-8 overflow-hidden bg-ink bg-cover bg-center px-5 pt-10 pb-11 text-white sm:mx-0 sm:mt-0 sm:rounded-lg sm:px-10 sm:pt-14 sm:pb-14"
+        style={{ backgroundImage: `linear-gradient(rgba(26,35,126,0.84), rgba(26,35,126,0.9)), url(${brandImage('fasad-vinter.webp')})` }}
+      >
+        {/* Moskéns geometriska mönster, svagt i guld */}
+        <span
+          className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-60"
+          style={{ backgroundImage: `url(${brandImage('monster-guld.png')})` }}
+          aria-hidden
+        />
+        <div className="relative">
+          {when && <p className="text-base text-white/85 first-letter:uppercase">{when}</p>}
+          <h1 className="mt-2 text-[clamp(2.1rem,8.6vw,3.75rem)] leading-[1.05] break-words hyphens-auto">
+            <DisplayLast text={settings.conference_name} />
+          </h1>
+          <span className="mt-4 block h-0.5 w-20 bg-accent" aria-hidden />
+          {tagline ? (
+            <p className="mt-4 max-w-[36ch] text-xl leading-snug text-white">
+              <Tr value={settings.tagline} />
             </p>
-          )
-        )}
-        {tagline && venue && (
-          <p className="mt-4 flex items-center gap-1.5 text-base text-muted">
-            <MapPin className="size-4 shrink-0" aria-hidden /> <bdi>{venue}</bdi>
-          </p>
-        )}
+          ) : (
+            (range || venue) && (
+              <p className="mt-4 max-w-[36ch] text-xl leading-snug text-white">
+                {range}
+                {range && venue && ' · '}
+                {venue && <bdi>{venue}</bdi>}
+              </p>
+            )
+          )}
+          {tagline && venue && (
+            <p className="mt-3 flex items-center gap-1.5 text-base text-white/85">
+              <MapPin className="size-4 shrink-0" aria-hidden /> <bdi>{venue}</bdi>
+            </p>
+          )}
+        </div>
       </section>
 
       <PostsList page="home" />

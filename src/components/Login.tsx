@@ -6,6 +6,7 @@ import { useAuth } from '../lib/auth'
 import { DEMO_PERSONAS } from '../lib/demoData'
 import { Button, Card, ErrorText, Field, Input } from './ui'
 import DemoBar from './DemoBar'
+import { Logo } from './Brand'
 
 /** Inloggning med engångskod på e-post – inga lösenord att komma ihåg. */
 export default function Login() {
@@ -32,8 +33,9 @@ export default function Login() {
     <div className="min-h-dvh">
       <DemoBar />
       <div className="mx-auto max-w-sm px-4 py-14">
+        <Logo className="mx-auto mb-8 h-14 w-auto" />
         <h1 className="text-center text-3xl font-semibold text-ink">
-          Volontär<span className="font-display font-normal italic">inloggning</span>
+          <span className="font-display font-normal">Volontärinloggning</span>
         </h1>
         <p className="mt-2 text-center text-base text-muted">För kommittéer och volontärer på Vinterkonferensen.</p>
         <Card className="mt-6 p-5">

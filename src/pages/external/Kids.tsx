@@ -55,7 +55,7 @@ export default function Kids() {
           <h3 className="text-lg font-semibold text-ink">{t.myRegistrations}</h3>
           <ul className="mt-2 space-y-2">
             {mine.map((r) => (
-              <li key={r.number} className="flex items-center gap-4 rounded-2xl border border-line bg-white px-4 py-3">
+              <li key={r.number} className="flex items-center gap-4 rounded-lg border border-line bg-white px-4 py-3">
                 <span className="shrink-0 text-3xl font-semibold tabular-nums text-ink" dir="ltr">
                   #{r.number}
                 </span>
@@ -248,7 +248,7 @@ function RegistrationForm({ onDone, onClose }: { onDone: (r: SavedReg) => void; 
   if (number != null)
     return (
       <div className="py-2 text-center">
-        <div className="rounded-2xl bg-emerald-700 px-6 py-6 text-white">
+        <div className="rounded-lg bg-ink px-6 py-6 text-white">
           <CheckCircle2 className="mx-auto size-9" strokeWidth={1.75} aria-hidden />
           <p className="mt-2 text-xl font-semibold">{t.regDone}</p>
           <p className="mt-3 text-base text-white/90">{t.yourNumber}</p>
@@ -269,7 +269,7 @@ function RegistrationForm({ onDone, onClose }: { onDone: (r: SavedReg) => void; 
     <form onSubmit={submit} noValidate className="space-y-7">
 
       {errorList.length > 0 && (
-        <div ref={summaryRef} tabIndex={-1} role="alert" aria-labelledby={`${uid}-summary`} className="rounded-xl border-2 border-rose-700 p-4 focus:outline-none">
+        <div ref={summaryRef} tabIndex={-1} role="alert" aria-labelledby={`${uid}-summary`} className="rounded-md border-2 border-rose-700 p-4 focus:outline-none">
           <h3 id={`${uid}-summary`} className="text-lg font-semibold text-ink">
             {t.errorSummary}
           </h3>

@@ -81,7 +81,7 @@ create table public.sessions (
   id uuid primary key default gen_random_uuid(),
   starts_at timestamptz not null,
   ends_at timestamptz not null check (ends_at > starts_at),
-  kind text not null default 'lecture' check (kind in ('lecture', 'preshow', 'activity', 'break', 'meal', 'other')),
+  kind text not null default 'lecture' check (kind in ('lecture', 'preshow', 'prayer', 'activity', 'break', 'meal', 'other')),
   audience text not null default 'adults' check (audience in ('adults', 'kids', 'all')),
   title jsonb not null default '{}',
   description jsonb not null default '{}',

@@ -1,6 +1,6 @@
 // Delade byggstenar för besökarsidorna: sidrubrik, dagväljare, programlista och anslag.
 import { useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
-import { Check, Clock, MapPin, Music, Pin, Star } from 'lucide-react'
+import { Check, Clock, MapPin, Moon, Music, Pin, Star } from 'lucide-react'
 import { useConference } from '../lib/conference'
 import { tr } from '../lib/format'
 import { useList, useNow } from '../lib/hooks'
@@ -13,28 +13,22 @@ import { Button, Empty, cx } from './ui'
 const ARABIC_SCRIPT = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/
 
 /**
- * Sätter sista ordet i Instrument Serif kursiv – ett ord per rubrik, aldrig mer.
- * Arabisk skrift lämnas i sitt eget typsnitt.
+ * Rubrik i moskéns rubriksnitt (Abril Fatface, som på konferensens affisch).
+ * Arabisk skrift får Amiri via typsnittsstacken.
  */
 export function DisplayLast({ text }: { text: string }) {
-  const m = text.trim().match(/^([\s\S]*\s)?(\S+)$/)
-  if (!m || ARABIC_SCRIPT.test(m[2])) return <>{text}</>
-  return (
-    <>
-      {m[1] ?? ''}
-      <em className="font-display text-[1.12em] font-normal tracking-normal italic">{m[2]}</em>
-    </>
-  )
+  return <span className={cx('font-display font-normal', ARABIC_SCRIPT.test(text) ? 'tracking-normal' : 'tracking-[0.01em]')}>{text}</span>
 }
 
 /** Sidans rubrik och ingress på besökarsidorna. */
 export function PageTitle({ title, lead }: { title: string; lead?: string }) {
   return (
     <header className="mb-7">
-      <h1 className="text-[2rem] leading-tight font-semibold tracking-tight text-ink sm:text-4xl">
+      <h1 className="text-[2.25rem] leading-[1.1] text-ink sm:text-5xl">
         <DisplayLast text={title} />
       </h1>
-      {lead && <p className="mt-1.5 max-w-[60ch] text-lg text-muted">{lead}</p>}
+      <span className="mt-3 block h-0.5 w-14 bg-accent" aria-hidden />
+      {lead && <p className="mt-3 max-w-[60ch] text-lg text-muted">{lead}</p>}
     </header>
   )
 }
@@ -91,7 +85,7 @@ export function DayTabs({ days, value, onChange }: { days: ConferenceDay[]; valu
   return (
     <div
       ref={ref}
-      className="no-print mb-6 grid gap-1 rounded-2xl bg-ice p-1"
+      className="no-print mb-6 grid gap-1 rounded-lg bg-ice p-1"
       style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }}
       role="tablist"
       aria-label={t.chooseDay}
@@ -108,7 +102,7 @@ export function DayTabs({ days, value, onChange }: { days: ConferenceDay[]; valu
             aria-selected={on}
             onClick={() => onChange(d.date)}
             className={cx(
-              'flex min-h-14 min-w-0 flex-col items-center justify-center rounded-xl px-1 py-1.5 text-center leading-tight transition-colors',
+              'flex min-h-14 min-w-0 flex-col items-center justify-center rounded-md px-1 py-1.5 text-center leading-tight transition-colors',
               on ? 'bg-white text-ink shadow-sm' : 'text-muted hover:text-ink',
             )}
           >
@@ -145,14 +139,14 @@ export function useDaySessions(date: string | null, audiences: Audience[]) {
 }
 
 function LiveDot() {
-  return <span className="inline-block size-2.5 shrink-0 rounded-full bg-accent" aria-hidden />
+  return <span className="inline-block size-2.5 shrink-0 rounded-full bg-accent-strong" aria-hidden />
 }
 
 /** Hur långt programpunkten har kommit. Fylls från sidans början, alltså från höger på arabiska. */
 function Progress({ value }: { value: number }) {
   return (
     <div className="mt-3 h-1 overflow-hidden rounded-full bg-line" aria-hidden>
-      <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${value * 100}%` }} />
+      <div className="h-full rounded-full bg-accent-strong transition-all" style={{ width: `${value * 100}%` }} />
     </div>
   )
 }
@@ -179,9 +173,9 @@ export function Agenda({ sessions, showFeedback = true }: { sessions: Session[];
           const ongoing = st === 'ongoing'
           const isNext = s.id === nextId
           const canRate = showFeedback && s.kind === 'lecture' && s.feedback_enabled && done
-          const minor = s.kind === 'preshow' || s.kind === 'break' || s.kind === 'meal'
+          const minor = s.kind === 'preshow' || s.kind === 'prayer' || s.kind === 'break' || s.kind === 'meal'
           const description = tr(s.description, lang)
-          const hasMeta = !!(s.speaker || s.room || s.kind === 'preshow')
+          const hasMeta = !!(s.speaker || s.room || s.kind === 'preshow' || s.kind === 'prayer')
           return (
             <li key={s.id} className={cx('flex gap-4', minor ? 'py-3.5' : 'py-4')} aria-current={ongoing ? 'true' : undefined}>
               {/* Tidskolumn */}
@@ -227,6 +221,11 @@ export function Agenda({ sessions, showFeedback = true }: { sessions: Session[];
                         <Music className="size-4" aria-hidden /> {t.preshow}
                       </span>
                     )}
+                    {s.kind === 'prayer' && (
+                      <span className="inline-flex items-center gap-1.5 text-ink-soft">
+                        <Moon className="size-4" aria-hidden /> {t.prayer}
+                      </span>
+                    )}
                     {s.speaker && <span>{s.speaker}</span>}
                     {s.room && (
                       <span className="inline-flex items-center gap-1">
@@ -243,7 +242,7 @@ export function Agenda({ sessions, showFeedback = true }: { sessions: Session[];
                     </p>
                   ) : (
                     <Button variant="secondary" className="mt-3" onClick={() => setRating(s)}>
-                      <Star className="size-5 fill-amber-400 text-amber-500" aria-hidden /> {t.rate}
+                      <Star className="size-5 fill-accent text-accent-strong" aria-hidden /> {t.rate}
                     </Button>
                   ))}
               </div>
@@ -286,8 +285,8 @@ export function NowNext({ sessions, rateBanner = true }: { sessions: Session[]; 
       </h2>
 
       {justEnded && (
-        <div className="mb-4 flex items-center gap-3 rounded-2xl bg-ice p-4">
-          <Star className="size-6 shrink-0 fill-amber-400 text-amber-500" aria-hidden />
+        <div className="mb-4 flex items-center gap-3 rounded-lg bg-ice p-4">
+          <Star className="size-6 shrink-0 fill-accent text-accent-strong" aria-hidden />
           <div className="min-w-0 flex-1">
             <p className="text-base text-muted">{t.justEnded}</p>
             <p className="text-base font-semibold break-words text-ink">
@@ -357,7 +356,7 @@ export function PostsList({ page }: { page: PostPage }) {
   return (
     <div className="mb-8 space-y-3">
       {posts.map((p) => (
-        <article key={p.id} className={cx('rounded-2xl px-4 py-4', p.pinned ? 'bg-ice' : 'border border-line bg-white')}>
+        <article key={p.id} className={cx('rounded-lg px-4 py-4', p.pinned ? 'bg-ice' : 'border border-line bg-white')}>
           {tr(p.title, lang) && (
             <h2 className="flex items-start gap-2 text-lg leading-snug font-semibold text-ink">
               {p.pinned && (

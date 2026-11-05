@@ -478,7 +478,7 @@ function NoteForm({ state, onSaved, onCancel }: { state: React.MutableRefObject<
                   <button
                     type="button"
                     onClick={() => setFiles(files.filter((_, j) => j !== i))}
-                    className="grid size-11 shrink-0 place-items-center rounded-xl text-muted hover:bg-slate-100 hover:text-ink"
+                    className="grid size-11 shrink-0 place-items-center rounded-md text-muted hover:bg-slate-100 hover:text-ink"
                     aria-label={`Ta bort ${f.name}`}
                     disabled={busy}
                   >
@@ -666,7 +666,7 @@ function NoteItem({ note }: { note: Note }) {
           <button
             onClick={remove}
             disabled={busy}
-            className="no-print -me-2 grid size-11 shrink-0 place-items-center rounded-xl text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+            className="no-print -me-2 grid size-11 shrink-0 place-items-center rounded-md text-rose-700 hover:bg-rose-50 disabled:opacity-50"
             aria-label={`Ta bort ${note.title}`}
             title="Ta bort"
           >
@@ -681,18 +681,18 @@ function NoteItem({ note }: { note: Note }) {
         (url ? (
           canOpenUrl(url) ? (
             <a href={url} target="_blank" rel="noopener noreferrer" className="mt-3 block w-fit max-w-full" aria-label={`Öppna bilden ${name}`}>
-              <img src={url} alt={note.title} loading="lazy" decoding="async" onError={() => setImgFailed(true)} className="max-h-[28rem] max-w-full rounded-xl border border-line object-contain" />
+              <img src={url} alt={note.title} loading="lazy" decoding="async" onError={() => setImgFailed(true)} className="max-h-[28rem] max-w-full rounded-md border border-line object-contain" />
             </a>
           ) : (
-            <img src={url} alt={note.title} loading="lazy" decoding="async" onError={() => setImgFailed(true)} className="mt-3 max-h-[28rem] max-w-full rounded-xl border border-line object-contain" />
+            <img src={url} alt={note.title} loading="lazy" decoding="async" onError={() => setImgFailed(true)} className="mt-3 max-h-[28rem] max-w-full rounded-md border border-line object-contain" />
           )
         ) : (
-          <div className="mt-3 grid h-40 max-w-sm place-items-center rounded-xl bg-ice" aria-hidden>
+          <div className="mt-3 grid h-40 max-w-sm place-items-center rounded-md bg-ice" aria-hidden>
             <ImageIcon className="size-6 text-muted" />
           </div>
         ))}
 
-      {note.kind === 'video' && url && <video controls playsInline preload="metadata" src={url} onError={refreshIfStale} className="mt-3 aspect-video w-full rounded-xl bg-black" />}
+      {note.kind === 'video' && url && <video controls playsInline preload="metadata" src={url} onError={refreshIfStale} className="mt-3 aspect-video w-full rounded-md bg-black" />}
 
       {note.kind === 'audio' && url && <audio controls preload="metadata" src={url} onError={refreshIfStale} className="mt-3 w-full" />}
 

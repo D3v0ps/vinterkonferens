@@ -131,7 +131,7 @@ export function ShiftEditor({
   return (
     <Modal open={open} onClose={onClose} title={d.id ? 'Redigera pass' : d.copyOf ? 'Kopia av pass' : 'Nytt pass'} wide persistent>
       {d.copyOf && !d.id && (
-        <p className="mb-5 rounded-xl bg-ice px-4 py-3 text-base text-ink">
+        <p className="mb-5 rounded-md bg-ice px-4 py-3 text-base text-ink">
           En kopia av {d.copyOf}. Ändra det som skiljer, till exempel dag eller tid, och spara.
         </p>
       )}

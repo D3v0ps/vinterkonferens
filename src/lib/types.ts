@@ -76,7 +76,7 @@ export interface Shift {
   created_at?: string
 }
 
-export type SessionKind = 'lecture' | 'preshow' | 'activity' | 'break' | 'meal' | 'other'
+export type SessionKind = 'lecture' | 'preshow' | 'prayer' | 'activity' | 'break' | 'meal' | 'other'
 export type Audience = 'adults' | 'kids' | 'all'
 
 export interface Session {

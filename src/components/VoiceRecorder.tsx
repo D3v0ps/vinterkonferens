@@ -295,7 +295,7 @@ function LiveRecorder({ onDone, disabled }: Props) {
         )}
         {recording && (
           <span className="inline-flex items-center gap-2 text-base font-medium text-accent-strong tabular-nums">
-            <span className="size-2.5 animate-pulse rounded-full bg-accent" aria-hidden /> Spelar in {mmss(seconds)}
+            <span className="size-2.5 animate-pulse rounded-full bg-accent-strong" aria-hidden /> Spelar in {mmss(seconds)}
           </span>
         )}
       </div>

@@ -142,7 +142,7 @@ function HallCounting() {
                 setDay(today)
                 setJump(fieldId(next.s.id, next.key))
               }}
-              className="flex w-full items-start gap-3 rounded-2xl bg-accent px-4 py-3 text-start text-base text-white shadow-sm hover:bg-accent-strong"
+              className="flex w-full items-start gap-3 rounded-lg bg-accent px-4 py-3 text-start text-base text-ink shadow-sm hover:bg-accent-strong hover:text-white"
             >
               <Timer className="mt-0.5 size-5 shrink-0" aria-hidden />
               <span className="min-w-0 flex-1">
@@ -154,7 +154,7 @@ function HallCounting() {
               <ArrowDown className="mt-0.5 size-5 shrink-0" aria-hidden />
             </button>
           ) : (
-            <div className="flex items-start gap-3 rounded-2xl bg-ink px-4 py-3 text-base text-white shadow-sm">
+            <div className="flex items-start gap-3 rounded-lg bg-ink px-4 py-3 text-base text-white shadow-sm">
               <Timer className="mt-0.5 size-5 shrink-0" aria-hidden />
               <span className="min-w-0">
                 <b className="font-semibold tabular-nums">
@@ -519,7 +519,7 @@ function KitchenCounting() {
             onClick={() => tap(c.key)}
             aria-label={`${c.label}: ${unknown ? 'hämtar dagens antal' : `${sum(c.key)} idag`}. Tryck för att lägga till en.`}
             className={cx(
-              'relative flex min-h-32 flex-col items-center justify-center gap-1 rounded-2xl border bg-white p-3 transition select-none active:scale-[0.97] active:bg-ice',
+              'relative flex min-h-32 flex-col items-center justify-center gap-1 rounded-lg border bg-white p-3 transition select-none active:scale-[0.97] active:bg-ice',
               flash?.cat === c.key ? 'border-ink ring-2 ring-ink/25' : 'border-line hover:border-slate-400',
             )}
           >

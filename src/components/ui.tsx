@@ -10,7 +10,7 @@ export function cx(...c: (string | false | null | undefined)[]) {
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'danger-solid' | 'accent'
 const variants: Record<Variant, string> = {
   primary: 'bg-ink text-white hover:bg-ink-soft',
-  accent: 'bg-accent text-white hover:bg-accent-strong',
+  accent: 'bg-accent text-ink hover:bg-accent-strong hover:text-white',
   secondary: 'bg-white text-ink border border-line hover:border-slate-400',
   ghost: 'text-ink hover:bg-slate-100',
   danger: 'bg-white text-rose-700 border border-rose-200 hover:bg-rose-50',
@@ -30,7 +30,7 @@ export function Button({
       {...rest}
       disabled={rest.disabled || loading}
       className={cx(
-        'inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
+        'inline-flex items-center justify-center gap-2 rounded-md font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
         size === 'sm' && 'min-h-9 px-3 py-1.5 text-[15px]',
         size === 'md' && 'min-h-11 px-4 py-2.5 text-base',
         size === 'lg' && 'min-h-13 px-6 py-3.5 text-lg',
@@ -125,7 +125,7 @@ export function Empty({ children, icon }: { children: ReactNode; icon?: ReactNod
 
 export function ErrorText({ children }: { children: ReactNode }) {
   if (!children) return null
-  return <p className="rounded-xl bg-rose-50 px-3 py-2 text-base text-rose-800" role="alert">{children}</p>
+  return <p className="rounded-md bg-rose-50 px-3 py-2 text-base text-rose-800" role="alert">{children}</p>
 }
 
 export function PageHeader({ title, subtitle, actions }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode }) {
@@ -178,7 +178,7 @@ export function Modal({
       }}
       onClose={() => open && onClose()}
       className={cx(
-        'm-auto w-[calc(100%-1.5rem)] rounded-2xl bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-ink/50',
+        'm-auto w-[calc(100%-1.5rem)] rounded-lg bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-ink/50',
         'max-sm:m-0 max-sm:h-dvh max-sm:max-h-none max-sm:w-full max-sm:max-w-none max-sm:rounded-none',
         wide ? 'max-w-3xl' : 'max-w-lg',
       )}
@@ -190,7 +190,7 @@ export function Modal({
             <button
               type="button"
               onClick={onClose}
-              className="grid size-11 shrink-0 place-items-center rounded-xl text-muted hover:bg-slate-100"
+              className="grid size-11 shrink-0 place-items-center rounded-md text-muted hover:bg-slate-100"
               aria-label={CLOSE_LABEL[document.documentElement.lang] ?? 'Stäng'}
             >
               <X className="size-5" />
@@ -205,7 +205,7 @@ export function Modal({
 
 export function Tabs<T extends string>({ value, onChange, options, className }: { value: T; onChange: (v: T) => void; options: { value: T; label: ReactNode }[]; className?: string }) {
   return (
-    <div role="tablist" className={cx('no-print inline-flex max-w-full gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1', className)}>
+    <div role="tablist" className={cx('no-print inline-flex max-w-full gap-1 overflow-x-auto rounded-md bg-slate-100 p-1', className)}>
       {options.map((o) => (
         <button
           key={o.value}

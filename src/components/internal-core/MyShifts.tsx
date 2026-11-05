@@ -27,7 +27,7 @@ export function ShiftItem({ shift: s, state, others, dateLabel }: { shift: Shift
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <h3 className="text-base font-semibold text-ink">{s.title}</h3>
-          {state === 'ongoing' && <span className="inline-flex items-center gap-1.5 text-base font-medium text-accent-strong"><span className="size-2 rounded-full bg-accent" aria-hidden />Pågår nu</span>}
+          {state === 'ongoing' && <span className="inline-flex items-center gap-1.5 text-base font-medium text-accent-strong"><span className="size-2 rounded-full bg-accent-strong" aria-hidden />Pågår nu</span>}
           {state === 'done' && <span className="text-base text-muted">Klart</span>}
         </div>
         {meta && (

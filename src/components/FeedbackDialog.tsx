@@ -212,9 +212,9 @@ export default function FeedbackDialog({ session, onClose, onDone }: { session: 
                     }}
                     aria-label={t.starN(n)}
                     aria-pressed={rating === n}
-                    className="grid size-14 place-items-center rounded-xl"
+                    className="grid size-14 place-items-center rounded-md"
                   >
-                    <Star className={cx('size-11 transition-colors', n <= rating ? 'fill-amber-400 text-amber-400' : 'text-slate-300')} strokeWidth={1.5} />
+                    <Star className={cx('size-11 transition-colors', n <= rating ? 'fill-accent text-accent-strong' : 'text-slate-300')} strokeWidth={1.5} />
                   </button>
                 ))}
               </div>

@@ -9,6 +9,7 @@ import { Button, Spinner, cx } from './ui'
 import DemoBar from './DemoBar'
 import Login from './Login'
 import ViewAsControl from './ViewAsControl'
+import { Logo, Symbol } from './Brand'
 import { NotVolunteer } from './ExternalLayout'
 
 export function useNavItems() {
@@ -77,7 +78,7 @@ export default function InternalLayout() {
           to={n.to}
           end={n.end}
           className={({ isActive }) =>
-            cx('flex min-h-11 items-center gap-3 rounded-xl px-3 py-2 text-base', isActive ? 'bg-white font-medium text-ink' : 'text-white/80 hover:bg-white/10 hover:text-white')
+            cx('flex min-h-11 items-center gap-3 rounded-md px-3 py-2 text-base', isActive ? 'bg-white font-medium text-ink' : 'text-white/80 hover:bg-white/10 hover:text-white')
           }
         >
           <n.icon className="size-4.5 shrink-0" /> {n.label}
@@ -97,11 +98,11 @@ export default function InternalLayout() {
         </div>
       </div>
       {auth.realIsAdmin && <ViewAsControl />}
-      <Link to="/" className="flex min-h-11 items-center gap-3 rounded-xl px-3 py-2 text-white/80 hover:bg-white/10">
+      <Link to="/" className="flex min-h-11 items-center gap-3 rounded-md px-3 py-2 text-white/80 hover:bg-white/10">
         <ExternalLink className="size-4" /> Besökarsidan
       </Link>
       {!auth.managedSignIn && (
-        <button onClick={auth.signOut} className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2 text-white/80 hover:bg-white/10">
+        <button onClick={auth.signOut} className="flex min-h-11 w-full items-center gap-3 rounded-md px-3 py-2 text-white/80 hover:bg-white/10">
           <LogOut className="size-4" /> Logga ut
         </button>
       )}
@@ -115,8 +116,9 @@ export default function InternalLayout() {
       </div>
       <div className="flex lg:min-h-0 lg:flex-1">
         <aside className="no-print hidden w-68 shrink-0 overflow-y-auto bg-ink p-4 lg:block lg:h-full">
-          <div className="mb-5 px-3 text-white">
-            <div className="text-lg font-semibold">Vinterkonferensen</div>
+          <div className="mb-6 px-3 text-white">
+            <Logo variant="white" className="h-12 w-auto" />
+            <div className="mt-4 text-lg font-semibold">Vinterkonferensen</div>
             <div className="text-base text-white/70">för volontärer</div>
           </div>
           {nav}
@@ -125,10 +127,13 @@ export default function InternalLayout() {
 
         <div id="main-scroll" className="min-w-0 flex-1 lg:overflow-y-auto">
           <header className="no-print sticky top-[env(safe-area-inset-top,0px)] z-20 flex items-center justify-between bg-ink px-4 py-2 text-white lg:hidden">
-            <span className="font-semibold">
-              Vinterkonferensen <span className="font-normal text-white/70">för volontärer</span>
+            <span className="flex min-w-0 items-center gap-2.5 font-semibold">
+              <Symbol variant="white" className="size-8 shrink-0" />
+              <span className="truncate">
+                Vinterkonferensen <span className="font-normal text-white/70">för volontärer</span>
+              </span>
             </span>
-            <button onClick={() => setOpen(true)} aria-label="Meny" className="grid size-11 place-items-center rounded-xl hover:bg-white/10">
+            <button onClick={() => setOpen(true)} aria-label="Meny" className="grid size-11 place-items-center rounded-md hover:bg-white/10">
               <MenuIcon className="size-6" />
             </button>
           </header>
@@ -137,7 +142,7 @@ export default function InternalLayout() {
               <div className="absolute inset-0 bg-ink/50" onClick={() => setOpen(false)} />
               <div className="absolute inset-y-0 end-0 w-80 max-w-[85vw] overflow-y-auto bg-ink p-4 pt-[max(1rem,env(safe-area-inset-top,0px))] pb-[max(1rem,env(safe-area-inset-bottom,0px))]">
                 <div className="mb-4 flex justify-end">
-                  <button onClick={() => setOpen(false)} aria-label="Stäng" className="grid size-11 place-items-center rounded-xl text-white hover:bg-white/10">
+                  <button onClick={() => setOpen(false)} aria-label="Stäng" className="grid size-11 place-items-center rounded-md text-white hover:bg-white/10">
                     <X className="size-6" />
                   </button>
                 </div>

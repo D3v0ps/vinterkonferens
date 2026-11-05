@@ -14,6 +14,7 @@ import type { Audience, ConferenceDay, Lang, Localized, Session, SessionKind } f
 const KIND_LABEL: Record<SessionKind, string> = {
   lecture: 'Föreläsning',
   preshow: 'Förprogram',
+  prayer: 'Bön',
   activity: 'Aktivitet',
   break: 'Paus / fika',
   meal: 'Måltid',
@@ -49,73 +50,42 @@ const POETRY_TEXT: Localized = {
   ar: 'قصائد بالسويدية والعربية بينما تمتلئ القاعة. تعال مبكراً واعثر على مقعد.',
 }
 
+// Upplägget följer konferensen 2025: bönerna är fasta punkter, föreläsningar på 45–60 min med raster
+// emellan, en panel som avslutar dagen och fritids parallellt. Tiderna är exempel och ändras per dag.
+const L = (sv: string, en: string, ar: string): Localized => ({ sv, en, ar })
+const PRAYER_TEXT = L('Bön i bönesalen. Programmet fortsätter efteråt.', 'Prayer in the prayer hall. The programme continues afterwards.', 'الصلاة في قاعة الصلاة. يستمر البرنامج بعدها.')
+const BREAK_TEXT = L('Mat och fika finns att köpa. Menyn finns under Köket.', 'Food and snacks are on sale. See the menu under Kitchen.', 'الطعام والمرطبات متوفرة للشراء. القائمة في قسم المطبخ.')
+const prayer = (start: string, end: string, name: Localized): ExampleItem => ({ start, end, kind: 'prayer', audience: 'all', room: 'Bönesalen', title: name, description: PRAYER_TEXT })
+const pause = (start: string, end: string): ExampleItem => ({ start, end, kind: 'break', audience: 'all', room: 'Café', title: L('Exempel: Rast – mat och fika', 'Example: Break – food and snacks', 'مثال: استراحة – طعام ومرطبات'), description: BREAK_TEXT })
+const lecture = (start: string, end: string, title: Localized, description: Localized): ExampleItem => ({ start, end, kind: 'lecture', audience: 'adults', room: 'Stora salen', capacity: 400, speaker: 'Exempeltalare', title, description })
+
 const EXAMPLE_DAY: ExampleItem[] = [
-  { start: '09:45', end: '10:00', kind: 'preshow', audience: 'adults', room: 'Stora salen', capacity: 400, title: POETRY, description: POETRY_TEXT },
-  {
-    start: '10:00',
-    end: '11:00',
-    kind: 'lecture',
-    audience: 'adults',
-    room: 'Stora salen',
-    capacity: 400,
-    speaker: 'Exempeltalare',
-    title: { sv: 'Exempel: Föreläsning om gemenskap', en: 'Example: Lecture on community', ar: 'مثال: محاضرة عن المجتمع' },
-    description: {
-      sv: 'Om att höra till, och om vad vi bär med oss när vi möts. Efteråt finns tid för frågor.',
-      en: 'On belonging, and on what we bring with us when we meet. Time for questions afterwards.',
-      ar: 'عن الانتماء، وعمّا نحمله معنا عندما نلتقي. يتبعها وقت للأسئلة.',
-    },
-  },
-  {
-    start: '10:00',
-    end: '11:30',
-    kind: 'activity',
-    audience: 'kids',
-    room: 'Fritids',
-    title: { sv: 'Exempel: Pyssel och lek', en: 'Example: Crafts and games', ar: 'مثال: أشغال يدوية وألعاب' },
-    description: { sv: 'Pyssel, pärlor och lekar för barnen.', en: 'Crafts, beads and games for the children.', ar: 'أشغال يدوية وخرز وألعاب للأطفال.' },
-  },
-  {
-    start: '12:00',
-    end: '13:00',
-    kind: 'meal',
-    audience: 'all',
-    room: 'Matsalen',
-    title: { sv: 'Exempel: Lunch', en: 'Example: Lunch', ar: 'مثال: غداء' },
-    description: {
-      sv: 'Varm rätt med vegetariskt alternativ. Menyn finns under Köket.',
-      en: 'A hot meal with a vegetarian option. See the menu under Kitchen.',
-      ar: 'وجبة ساخنة مع خيار نباتي. القائمة في قسم المطبخ.',
-    },
-  },
+  prayer('12:45', '13:15', L('Exempel: Asr', 'Example: Asr', 'مثال: العصر')),
   { start: '13:15', end: '13:30', kind: 'preshow', audience: 'adults', room: 'Stora salen', capacity: 400, title: POETRY, description: POETRY_TEXT },
+  lecture('13:30', '14:30', L('Exempel: Föreläsning om gemenskap', 'Example: Lecture on community', 'مثال: محاضرة عن المجتمع'), L('Om att höra till, och om vad vi bär med oss när vi möts. Efteråt finns tid för frågor.', 'On belonging, and on what we bring with us when we meet. Time for questions afterwards.', 'عن الانتماء، وعمّا نحمله معنا عندما نلتقي. يتبعها وقت للأسئلة.')),
+  prayer('15:00', '15:30', L('Exempel: Maghrib', 'Example: Maghrib', 'مثال: المغرب')),
+  pause('15:30', '16:00'),
+  lecture('16:00', '17:00', L('Exempel: Föreläsning om hopp', 'Example: Lecture on hope', 'مثال: محاضرة عن الأمل'), L('Om hopp i svåra tider, med berättelser från deltagarna själva.', 'On hope in hard times, with stories from the participants themselves.', 'عن الأمل في الأوقات الصعبة، مع قصص من المشاركين أنفسهم.')),
+  prayer('18:00', '18:30', L('Exempel: Isha', 'Example: Isha', 'مثال: العشاء')),
+  pause('18:30', '19:00'),
+  lecture('20:00', '21:00', L('Exempel: Panel och frågor', 'Example: Panel and questions', 'مثال: حلقة نقاش وأسئلة'), L('Talarna svarar på publikens frågor. Skicka in din fråga under dagen.', 'The speakers answer questions from the audience. Send in your question during the day.', 'يجيب المتحدثون على أسئلة الجمهور. أرسل سؤالك خلال اليوم.')),
   {
     start: '13:30',
-    end: '14:30',
-    kind: 'lecture',
-    audience: 'adults',
-    room: 'Stora salen',
-    capacity: 400,
-    speaker: 'Exempeltalare',
-    title: { sv: 'Exempel: Föreläsning om hopp', en: 'Example: Lecture on hope', ar: 'مثال: محاضرة عن الأمل' },
-    description: {
-      sv: 'Om hopp i svåra tider, med berättelser från deltagarna själva.',
-      en: 'On hope in hard times, with stories from the participants themselves.',
-      ar: 'عن الأمل في الأوقات الصعبة، مع قصص من المشاركين أنفسهم.',
-    },
-  },
-  {
-    start: '13:30',
-    end: '15:00',
+    end: '17:00',
     kind: 'activity',
     audience: 'kids',
     room: 'Fritids',
-    title: { sv: 'Exempel: Utelek i snön', en: 'Example: Outdoor play in the snow', ar: 'مثال: لعب في الثلج' },
-    description: {
-      sv: 'Pulka, snögubbar och varm saft. Ta med varma kläder och vantar.',
-      en: 'Sledging, snowmen and warm cordial. Bring warm clothes and mittens.',
-      ar: 'تزلج ورجال ثلج وعصير دافئ. أحضروا ملابس دافئة وقفازات.',
-    },
+    title: L('Exempel: Fritids – pyssel och lek', 'Example: Kids club – crafts and games', 'مثال: نادي الأطفال – أشغال يدوية وألعاب'),
+    description: L('Pyssel, lekar och berättelser för barnen medan de vuxna lyssnar.', 'Crafts, games and stories for the children while the adults listen.', 'أشغال يدوية وألعاب وقصص للأطفال بينما يستمع الكبار.'),
+  },
+  {
+    start: '17:00',
+    end: '20:00',
+    kind: 'activity',
+    audience: 'kids',
+    room: 'Fritids',
+    title: L('Exempel: Fritids – film och fika', 'Example: Kids club – film and snacks', 'مثال: نادي الأطفال – فيلم ومرطبات'),
+    description: L('Film, fika och lugna lekar. Middag ingår.', 'A film, snacks and quiet games. Dinner included.', 'فيلم ومرطبات وألعاب هادئة. العشاء مشمول.'),
   },
 ]
 
@@ -402,7 +372,7 @@ export default function ProgramAdmin() {
       </p>
 
       {canEdit && examples.length > 0 && (
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-xl bg-ice px-4 py-3">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-md bg-ice px-4 py-3">
           <p className="text-base text-ink">Exempelprogrammet ligger inne och syns på besökarsidan.</p>
           <Button variant="ghost" className="text-rose-700" loading={exBusy} onClick={removeExamples}>
             <Trash2 className="size-4" aria-hidden /> Ta bort exemplen
@@ -515,7 +485,7 @@ export default function ProgramAdmin() {
             }}
           >
             {form.copyOf && !form.id && (
-              <p className="rounded-xl bg-ice px-4 py-3 text-base text-ink">
+              <p className="rounded-md bg-ice px-4 py-3 text-base text-ink">
                 Kopia av "{form.copyOf}". Ändra dag eller tid och spara för att lägga in den.
               </p>
             )}

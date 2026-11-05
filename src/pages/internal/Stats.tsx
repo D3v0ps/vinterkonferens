@@ -159,7 +159,7 @@ function Audience({ lectures, counts, feedback }: { lectures: Session[]; counts:
       />
 
       {lateN > 0 && (
-        <div className="flex gap-3 rounded-xl bg-ice px-4 py-3 text-base text-ink">
+        <div className="flex gap-3 rounded-md bg-ice px-4 py-3 text-base text-ink">
           <TriangleAlert className="mt-0.5 size-5 shrink-0 text-ink" aria-hidden />
           <p>
             <b className="font-semibold">Publiken kommer sent på {lateN} av {judged.length} föreläsningar.</b> Prova ett förprogram, t.ex. poesi, 15
@@ -383,7 +383,7 @@ function Ratings({ lectures, feedback }: { lectures: Session[]; feedback: Feedba
                 {fs.length > 0 && (
                   <div className="sm:text-end">
                     <div className="inline-flex items-center gap-1.5 text-2xl font-semibold tabular-nums text-ink">
-                      <Star className="size-5 fill-amber-400 text-amber-400" aria-hidden /> {one(avg(fs))}
+                      <Star className="size-5 fill-accent text-accent-strong" aria-hidden /> {one(avg(fs))}
                     </div>
                     <div className="text-sm text-muted">{fs.length} svar</div>
                   </div>

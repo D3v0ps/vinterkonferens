@@ -386,10 +386,10 @@ function ReceiptView({ path, name }: { path: string; name: string | null }) {
         {url && isImage && !imgFailed && (
           canOpenUrl(url) ? (
             <a href={url} target="_blank" rel="noopener noreferrer" className="block w-fit max-w-full" aria-label="Öppna kvittot i en ny flik">
-              <img src={url} alt={`Kvitto: ${fileName}`} loading="lazy" decoding="async" onError={() => setImgFailed(true)} className="max-h-96 max-w-full rounded-xl border border-line object-contain" />
+              <img src={url} alt={`Kvitto: ${fileName}`} loading="lazy" decoding="async" onError={() => setImgFailed(true)} className="max-h-96 max-w-full rounded-md border border-line object-contain" />
             </a>
           ) : (
-            <img src={url} alt={`Kvitto: ${fileName}`} loading="lazy" decoding="async" onError={() => setImgFailed(true)} className="max-h-96 max-w-full rounded-xl border border-line object-contain" />
+            <img src={url} alt={`Kvitto: ${fileName}`} loading="lazy" decoding="async" onError={() => setImgFailed(true)} className="max-h-96 max-w-full rounded-md border border-line object-contain" />
           )
         )}
         {url && (!isImage || imgFailed) && <FileLinks bucket="receipts" path={path} url={url} name={fileName} openLabel="Öppna kvittot" />}
@@ -815,7 +815,7 @@ function PurchaseForm({
         </div>
       </details>
 
-      <section aria-label="Summering" className="rounded-2xl bg-ice px-4 py-4 sm:px-5">
+      <section aria-label="Summering" className="rounded-lg bg-ice px-4 py-4 sm:px-5">
         <dl className="space-y-1 text-base">
           <div className="flex justify-between gap-4">
             <dt>

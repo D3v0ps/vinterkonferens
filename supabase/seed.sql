@@ -2,7 +2,7 @@
 insert into public.settings (id, conference_name) values (1, 'Vinterkonferensen') on conflict (id) do nothing;
 
 insert into public.committees (slug, name, color, sort) values
-  ('styrgruppen',    'Styrgruppen',    '#0f2a47', 0),
+  ('styrgruppen',    'Styrgruppen',    '#1a237e', 0),
   ('konferencierer', 'Konferencierer', '#7c3aed', 1),
   ('koket',          'Köket',          '#0f766e', 2),
   ('fritids',        'Fritids',        '#15803d', 3),
